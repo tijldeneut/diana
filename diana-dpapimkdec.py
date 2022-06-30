@@ -25,7 +25,7 @@ except ImportError: raise ImportError('Missing dpapick3, please install via pip 
 
 def checkParameters(options, args):
     """Simple checks on the parameters set by the user."""
-    if not args or not len(args) == 1: sys.exit('You must provide at least one masterkey.')
+    if not args: sys.exit('You must provide at least one masterkey.')
 
     boolEmpty = True
     for x in options.__dict__: 
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         else:
             for sFile in os.listdir(sArg):
                 sFilepath = os.path.join(sArg, sFile)
-                if not os.path.isfile(sFilepath): break
+                if not os.path.isfile(sFilepath): continue
                 if sFile == 'Preferred': print('[+] Preferred Key is ' + parseGUID(open(sFilepath,'rb').read())[:36])
                 else:
                     if not '-' in sFile: continue
