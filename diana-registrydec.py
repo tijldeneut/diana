@@ -149,6 +149,40 @@ def getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True):
 
     return lstDomHashes
 
+def doTBALDecrypt(sSECURITYhive, sSYSTEMhive, boolVerbose = False):
+    def parseLocalTBAL(bData):
+        bRemainder = bData[4:] ## First 4 bytes UNK
+        iFullDataLen = int(reverseByte(bRemainder[:4]).hex(), 16)
+        if not iFullDataLen == len(bData): print('    Probably not a correct TBAL entry')
+        sFlags = reverseByte(bRemainder[4:4+4]) ## Followed by 4 bytes UNK
+        bRemainder = bRemainder[12:]
+        bNTLM = bRemainder[:16]
+        bLM = bRemainder[16:16+16]
+        bSHA1 = bRemainder[16+16:16+16+20]
+        bDPAPI = bRemainder[16+16+20:16+16+20+20]
+        bRemainder = bRemainder[16+16+20+20:]
+        iDomainPtr = int(reverseByte(bRemainder[:4]).hex(), 16)
+        iDomainLength = int(reverseByte(bRemainder[4:4+2]).hex(), 16)
+        iDomainBuffersize = int(reverseByte(bRemainder[4+2:4+2+2]).hex(), 16)
+        bRemainder = bRemainder[4+2+2:]
+        iUserPtr = int(reverseByte(bRemainder[:4]).hex(), 16)
+        iUserLength = int(reverseByte(bRemainder[4:4+2]).hex(), 16)
+        iUserBuffersize = int(reverseByte(bRemainder[4+2:4+2+2]).hex(), 16)
+        sDomain = bData[iDomainPtr:iDomainPtr+iDomainLength].decode('UTF-16LE')
+        sUser = bData[iUserPtr:iUserPtr+iUserLength].decode('UTF-16LE')
+        print('[+] User {}\{} has NT hash : {} and SHA1 hash : {}'.format(sDomain, sUser, bNTLM.hex(), bSHA1.hex()))
+        return
+    oDpaReg = dpareg.Regedit()
+    lstSecrets = oDpaReg.get_lsa_secrets(sSECURITYhive, sSYSTEMhive)
+    for lstSecret in lstSecrets:
+        if 'TBAL' in lstSecret:
+            if 'MSV1' in lstSecret: 
+                parseLocalTBAL(lstSecrets[lstSecret]['CurrVal'])
+            else:
+                print('    {}'.format(lstSecret))
+                print('    {}'.format(lstSecrets[lstSecret]['CurrVal'].hex()))
+    return
+   
 def getAutoLoginCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, boolVerbose = True):
     oReg = Registry(sSOFTWAREhive)
     oKey = oReg.open(r'Microsoft\Windows NT\CurrentVersion\Winlogon')
@@ -169,6 +203,9 @@ def getAutoLoginCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, boolVerbose = T
             print(f'    Domain   : {sDomain}') if sDomain else None
             print(f'    Password : {sPassword}') if sPassword else None
             print(f'    Set on   : {sSetDate}') if sSetDate else None
+            if 'TBAL' in sPassword: 
+                print('[!] Warning: Automatic Restart Sign-On (ARSO) detected, running additional decryption:')
+                doTBALDecrypt(sSECURITYhive, sSYSTEMhive, boolVerbose)
         else: print('[-] No credentials found')
     else: print('[-] No credentials found')
     return
@@ -226,6 +263,20 @@ def getHostname(sSYSTEM, boolVerbose = False):
     if boolVerbose: print(f'[+] Hostname         : {sHostname}')
     return sHostname
 
+def getSystemDetails(sSOFTWAREhive, boolVerbose = False):
+    oSoftReg = Registry(sSOFTWAREhive)
+    sProductName = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('ProductName').value()
+    sBuildName = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('BuildLab').value()
+    sBuildNr = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('CurrentBuild').value()
+    sOSVersion = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('DisplayVersion').value()
+    sOwner = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('RegisteredOwner').value()
+    sOrg = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('RegisteredOrganization').value()
+    sFeatureUpdateInstallDate = datetime.datetime.fromtimestamp(int(oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('InstallDate').value()))
+    if boolVerbose: 
+        print(f'[+] OS Details       : {sProductName}; v{sOSVersion}; {sBuildName} (Build {sBuildNr})')
+        print(f'                       Owner: {sOwner}')
+    return
+   
 def getLocalUsers(sSOFTWARE, sSAM, boolMembership = True, boolVerbose = False):
     if boolVerbose: print('[+] Listing Local users')
     def getLocalGroupMembership(sSOFTWARE, sSID, sDomainSID, boolVerbose = False):
@@ -429,6 +480,7 @@ if __name__ == '__main__':
 
     print('---- [00] General Information ----')
     getHostname(sSYSTEMhive, True)
+    getSystemDetails(sSOFTWAREhive, True)
     getNLKM(sSYSTEMhive, sSECURITYhive, True)
     getMachineAccHash(sSYSTEMhive, sSECURITYhive, True)
     lstUsers = getLocalUsers(sSOFTWAREhive, sSAMhive, options.membership, True)
