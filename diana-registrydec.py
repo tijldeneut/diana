@@ -327,7 +327,8 @@ def getMSAccounts(sSOFTWAREhive, boolVerbose = True):
         return lstMSLiveAccounts
     for oSubKey in oKey.subkeys():
         sName = oSubKey.name()
-        sDisplayName = oSubKey.value('DisplayName').value()
+        try: sDisplayName = oSubKey.value('DisplayName').value()
+        except: sDisplayName = ''
         sIdentityName = oSubKey.value('IdentityName').value()
         sSID = oSubKey.value('Sid').value()
         lstMSLiveAccounts.append((sName, sDisplayName, sIdentityName, sSID))
