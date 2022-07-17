@@ -145,7 +145,7 @@ def getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True):
     if boolVerbose: 
         for lstDomHash in lstDomHashes: ## sHash, sUsername, sDomain, sDomainName
             ## Hashcat format: $DCC2$10240#administrator#ca1d9556a194e25e31c431238dea264b
-            print('    Domain {}  : $DCC2$10240${}#{}'.format(lstDomHash[3].lower(), lstDomHash[1].lower(), lstDomHash[0].lower()))
+            print('    Domain {}  : $DCC2$10240#{}#{}'.format(lstDomHash[3].lower(), lstDomHash[1].lower(), lstDomHash[0].lower()))
 
     return lstDomHashes
 
