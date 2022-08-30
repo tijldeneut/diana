@@ -268,10 +268,13 @@ def getSystemDetails(sSOFTWAREhive, boolVerbose = False):
     sProductName = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('ProductName').value()
     sBuildName = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('BuildLab').value()
     sBuildNr = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('CurrentBuild').value()
-    sOSVersion = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('DisplayVersion').value()
+    try: sOSVersion = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('DisplayVersion').value()
+    except: sOSVersion = ''
     sOwner = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('RegisteredOwner').value()
-    sOrg = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('RegisteredOrganization').value()
-    sFeatureUpdateInstallDate = datetime.datetime.fromtimestamp(int(oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('InstallDate').value()))
+    try: 
+        sOrg = oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('RegisteredOrganization').value()
+        sFeatureUpdateInstallDate = datetime.datetime.fromtimestamp(int(oSoftReg.open(r'Microsoft\Windows NT\CurrentVersion').value('InstallDate').value()))
+    except: pass
     if boolVerbose: 
         print(f'[+] OS Details       : {sProductName}; v{sOSVersion}; {sBuildName} (Build {sBuildNr})')
         print(f'                       Owner: {sOwner}')
