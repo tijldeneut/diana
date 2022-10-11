@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
     (options, args) = parser.parse_args()
 
-    check_parameters(options, args)
+    boolDecrypt = check_parameters(options, args)
 
     bKey = bDerivedKey = bContext = b''
     oFileData = base64.urlsafe_b64decode(args[0])
