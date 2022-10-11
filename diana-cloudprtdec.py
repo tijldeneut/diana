@@ -33,11 +33,14 @@ def reverseByte(bByteInput):
 def check_parameters(options, args):
     """Simple checks on the parameters set by the user."""
     if not args or not len(args) == 1: sys.exit('[-] You must provide an argument.')
-    if options.mkhex: return
-    for x in [options.security, options.system]: 
-            if not os.path.exists(x): sys.exit('[-] You must provide SYSTEM and SECURITY hives.') 
-    #if not options.security or not options.system: print('[-] To decrypt: You must provide SYSTEM and SECURITY hives (or decrypted HEX key).')
-    if not options.masterkeydir: print('[-] To decrypt: You must provide the system DPAPI folder (or decrypted HEX key).')
+    if options.mkhex: return True
+    if not options.security or not options.system: 
+        print('[-] To decrypt: You must provide SYSTEM and SECURITY hives (or decrypted HEX key).')
+        return False
+    if not options.masterkeydir: 
+        print('[-] To decrypt: You must provide the system DPAPI folder (or decrypted HEX key).')
+        return False
+    return True
 
 if __name__ == '__main__':
     """Utility core."""
@@ -69,8 +72,7 @@ if __name__ == '__main__':
     print('[+] Key in software, good to go')
     oBlob = blob.DPAPIBlob(oFileData[8:])
     print('[+] MK required: {}'.format(oBlob.mkguid))
-    if not options.mkhex and not (options.system or options.security or options.masterkeydir):
-        exit('[-] Please provide decryption details.')
+    if not boolDecrypt: exit('[-] Please provide decryption details.')
 
     if not options.mkhex:
         reg = registry.Regedit()
