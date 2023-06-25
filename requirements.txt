@@ -1,2 +1,3 @@
 dpapick3
 jwt
+termcolor
