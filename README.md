@@ -1,3 +1,15 @@
+# Fork details
+
+v2023.06 - updated diana-browserdec.py - tested on v117 (canary) and v114 (stable)
+* 🌈: Did some visual updates
+* 📝: Added the decryption of "Notes" that a user optionally can add when saving a password.
+* 🥷: Also added a quick scan for deleted logins.
+
+* Example
+  ![image](https://github.com/Banaanhangwagen/diana/assets/25983612/49c900e9-c8ac-4bbd-b795-5f0a39b88ef2)
+
+---
+
 # DIANA Windows Credential Toolkit
 
 It's a Work-In-Progress, so feel free to create some issues  
@@ -9,7 +21,7 @@ Background: https://www.insecurity.be/blog/2020/12/24/dpapi-in-depth-with-toolin
 Prerequisites:  
 ```
 sudo apt update && sudo apt install -y python3-pip git  
-python3 -m pip install dpapick3 jwt
+python3 -m pip install dpapick3 jwt termcolor
 ```
 
 The DPAPI bulk of the work is done by DPAPICK3 (https://pypi.org/project/dpapick3/)
