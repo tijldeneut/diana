@@ -1,15 +1,3 @@
-# Fork details
-
-v2023.06 - updated diana-browserdec.py - tested on v117 (canary) and v114 (stable)
-* 🌈: Did some visual updates
-* 📝: Added the decryption of "Notes" that a user optionally can add when saving a password.
-* 🥷: Also added a quick scan for deleted logins.
-
-* Example
-  ![image](https://github.com/Banaanhangwagen/diana/assets/25983612/49c900e9-c8ac-4bbd-b795-5f0a39b88ef2)
-
----
-
 # DIANA Windows Credential Toolkit
 
 It's a Work-In-Progress, so feel free to create some issues  
