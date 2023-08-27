@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 r'''
 Copyright 2022, Tijl "Photubias" Deneut <@tijldeneut>
+Copyright 2023, Banaanhangwagen <@banaanhangwagen>
 This script provides offline decryption of Chromium based browser user data: Google Chrome, Edge Chromium and Opera
 
 Credentials (and cookies) are encrypted using a Browser Master Encryption key.
@@ -12,7 +13,7 @@ This BME key can then be used to decrypt (AES GCM) the login data and cookies, m
 %localappdata%\{Google/Microsoft}\{Chrome/Edge}\User Data\Default\
 or %appdata%\Opera Software\Opera Stable\
 
-DPAPI decrypting the BME key is the hard part. It uses the user DPAPI Masterkey secret from a DPAPI Masterkey file (MK file). 
+DPAPI decrypting the BME key is the hard part. It uses the user DPAPI Masterkey secret from a DPAPI Masterkey file (MK file).
 To identify which DPAPI Masterkey file, the browser "Local State" file contains the cleartext GUID, which is the filename of the MK file
 Usually this DPAPI MK file is located at
 %appdata%\Microsoft\Protect\<SID>\<GUID>
@@ -25,10 +26,6 @@ The secret within the MK file can be decrypted either via Local AD Domain RSA Ke
 e.g. mkudec.py %appdata%\Roaming\Microsoft\Protect\<SID>\* -a <hash> | findstr Secret > masterkeylist.txt
 #> and remove all strings '    Secret:'
 '''
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import argparse
 import os
 import json
@@ -301,6 +298,9 @@ if __name__ == '__main__':
     if oArgs.loginfile:
         lstLogins, lstGUIDs = parse_login_file(oArgs.loginfile, lstGUIDs)
         print('[!] Found {} credential(s).'.format(len(lstLogins)))
+    else:
+        print(colored('[-] Error: No \"Login Data\"-file provided. Exiting...', 'red'))
+        exit()
 
     ## Get Notes, if any
     if oArgs.loginfile:
