@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 r'''
 Copyright 2022, Tijl "Photubias" Deneut <@tijldeneut>
