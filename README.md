@@ -9,7 +9,7 @@ Background: https://www.insecurity.be/blog/2020/12/24/dpapi-in-depth-with-toolin
 Prerequisites:  
 ```
 sudo apt update && sudo apt install -y python3-pip git  
-python3 -m pip install dpapick3 jwt
+python3 -m pip install dpapick3 jwt termcolor
 ```
 
 The DPAPI bulk of the work is done by DPAPICK3 (https://pypi.org/project/dpapick3/)
