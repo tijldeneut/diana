@@ -52,6 +52,7 @@ appreciated.
 - **diana-vaultdec.py**: Decrypt secrets in VAULT vcrd files, both SYSTEM and USER based
 - **diana-creddec.py**: Decrypt credentials in CREDENTIAL files, both SYSTEM and USER based
 - **diana-browserdec.py**: Decrypt passwords and cookies from all Chromium based browsers (Chrome, Edge, Opera ...)
+- **diana-browserdec-ng.py**: Decrypt passwords and cookies from all Chromium based browsers (Chrome, Edge, Opera ...), extra features: color, decrypting Notes and listing deleted Logins
 - **diana-wifidec.py**: Decrypt Windows Wi-Fi profiles, including passwords, SYSTEM based
 - **diana-wifipeapdec.py**: Decrypt Windows Wi-Fi Enterprise profiles, requires SYSTEM & USER data
 - **diana-openvpndec.py**: Decrypt OpenVPN saved Private Key passphrases
@@ -77,7 +78,7 @@ Also implements ***ncrypt.dll*** functionality to decrypt the Private Keys using
 
 ## Licensing and Copyright
 
-Copyright 2022 Tijl "Photubias" Deneut. All Rights Reserved.
+Copyright 2023 Tijl "Photubias" Deneut. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
