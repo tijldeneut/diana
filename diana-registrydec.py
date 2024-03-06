@@ -84,7 +84,10 @@ def getBootKey(sSYSTEMhive):
     return bytes.fromhex(sBootKey)
 
 def getNLKM(sSYSTEMhive, sSECURITYhive, boolVerbose = True): ## Can be used to determine install date
-    bNLKM = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    try:
+        bNLKM = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    except TypeError:
+        return
     sInstallDateTime = datetime.datetime.fromtimestamp(int(getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['OupdTime']))
     if boolVerbose: print('[+] System installed : {}'.format(sInstallDateTime))
     ## This is commented out untill I know of an external use for this beyond decrypting domain hashes
@@ -127,7 +130,10 @@ def getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True):
         iOffsetDomainName = iOffsetDomain+iLengthDomain + (iOffsetDomain+iLengthDomain)%4
         sDomainName = bClearData[iOffsetDomainName:iOffsetDomainName+iLengthDomainName].decode('UTF-16LE')
         return (sClearHash, sUsername, sDomain, sDomainName)
-    bNLKMKey = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    try:
+        bNLKMKey = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    except TypeError:
+        return []
     oReg = Registry(sSECURITYhive)
     oKey = oReg.open(r'Cache')
     lstDomHashes = []
