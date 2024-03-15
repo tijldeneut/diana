@@ -21,14 +21,14 @@
 # limitations under the License.
 """ Windows Microsoft Account DPAPI key decryption utility."""
 
-import hashlib, optparse, os, sys
+import hashlib, optparse, os, sys, hmac
 from Crypto.Cipher import AES ## pip3 install pycryptodome
 
 def checkParams(options, args):
     if not options.cachedatafile or not options.password:
         sys.exit('You must provide cleartext password and cachedata file.')
     if not os.path.isfile(options.cachedatafile):
-        sys.exit('File not found: {}.'.format(options.cachedatafile))
+        sys.exit(f'File not found: {options.cachedatafile}.')
     return
 
 def reverseByte(bByteInput):
@@ -84,9 +84,9 @@ def parseDecryptedCache(bClearData, boolVerbose = True):
         sAccount = bAccount.decode('UTF-16LE')
     else: return sPassword
     print('[+] Decoded:')
-    print('    StableUserID : {} (There should be a SQLite archive at %localappdata%\\ConnectedDevicesPlatform\\{}\\)'.format(sStableUserId, sStableUserId))
-    print('    User Account : {}'.format(sAccount))
-    print('    XML Cipher : {}'.format(sXML))
+    print(f'    StableUserID : {sStableUserId} (There should be a SQLite archive at %localappdata%\\ConnectedDevicesPlatform\\{sStableUserId}\\)')
+    print(f'    User Account : {sAccount}')
+    print(f'    XML Cipher : {sXML}')
     print('')
     return sPassword
 
@@ -103,7 +103,7 @@ def walkThroughFile(bCacheDataOrg, oCipher):
             if not b'\x00\x40\x00' in bClearData: continue
             sPassword = parseDecryptedCache(bClearData, True)
             if sPassword: 
-                print('[+] Success, use this as your DPAPI cleartext user password:\n    {}'.format(sPassword))
+                print(f'[+] Success, use this as your DPAPI cleartext user password:\n    {sPassword}')
                 break
             i+=iLength
         #except Exception as e: print(e)
@@ -122,6 +122,7 @@ if __name__ == '__main__':
     parser.add_option('--cachedatafile', '-f', metavar='FILE', help=r'CloudAPCache CacheData', default=os.path.join('Windows','System32','config','systemprofile','AppData','Local','Microsoft','Windows','CloudAPCache','MicrosoftAccount','CacheData'))
     parser.add_option('--password', '-p', metavar='STRING', help=r'Clear Text User Password')
     parser.add_option('--export', '-e', action="store_true", default=False, metavar='BOOL', help=r'Export a (crackable) Hash, TODO: write Hashcat module')
+    parser.add_option('--sid', metavar='SID', dest='sid', help=r'SID required for AzureAD accounts')
 
     (options, args) = parser.parse_args()
     
@@ -133,24 +134,40 @@ if __name__ == '__main__':
     bCacheDataOrg = file.read()
     file.close()
 
-    if not bCacheDataOrg[72:72+4] == b'\x02\x00\x00\x00':
+    if not bCacheDataOrg[72:72 + 4] == b'\x02\x00\x00\x00':
         exit('[-] Error: Not a valid Microsoft Live Account CacheData file?')
 
-    oCipher = AES.new(bDecryptionKey, AES.MODE_CBC, b'\x00'*16)
+    oCipher = AES.new(bDecryptionKey, AES.MODE_CBC, b'\x00' * 16)
     
     ## First 124 are "static length", from then on length + data
     bCacheData = bCacheDataOrg[124:]
     sPassword = None
+    key = None
     lstCandidates = getEncryptedData(bCacheData)
     sToExport = ''
     for bEncrData in lstCandidates:
-        if options.export: sToExport += bEncrData[-64:].hex()+"\n"
+        if options.export: sToExport += bEncrData[-64:].hex() + "\n"
         bClearData = oCipher.decrypt(bEncrData)
         ## Since we know the MS Live Emailaddress is in the decoded data, there should be a unicode '@'
-        if not b'\x00\x40\x00' in bClearData: continue
-        sPassword = parseDecryptedCache(bClearData, True)
-        if sPassword: print('[+] Success, use this as the DPAPI cleartext user password:\n    {}'.format(sPassword))
-    if not sPassword: print('[-] Wrong password?')
-    if options.export and not sToExport == '': print('\n[+] This should be crackable with PBKDF2-SHA256+AES256 and decrypted should contain bytes "004000":\n{}'.format(sToExport))
+        if not b'\x00\x40\x00' in bClearData:
+            continue
+        # AzureAD
+        if b'Version' in bClearData:
+            if options.sid is None:
+                sys.exit('[-] AzureAD accoun detected, --sid must be specified')
+            key = hashlib.sha1(bClearData[0x30:0x70]).digest()
+            sid = (options.sid + '\0').encode('UTF-16-LE')
+            key = hmac.new(key, sid, hashlib.sha1).hexdigest()
+        # Microsoft Account
+        else:
+            sPassword = parseDecryptedCache(bClearData, True)
+        if sPassword:
+            print(f'[+] Success, use this as the DPAPI cleartext user password:\n    {sPassword}')
+        if key:
+            print(f'[+] Success, use this key to decrypt masterkeys of the user: 0x{key}')
+    if not sPassword and not key:
+        print('[-] Wrong password?')
+    if options.export and not sToExport == '':
+        print(f'\n[+] This should be crackable with PBKDF2-SHA256+AES256 and decrypted should contain bytes "004000":\n{sToExport}')
     
     #walkThroughFile(bCacheDataOrg, oCipher)
