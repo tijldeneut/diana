@@ -202,9 +202,9 @@ if __name__ == '__main__':
         sSOFTWAREHive = 'SOFTWARE'
         sSYSTEMHive = 'SYSTEM'
         sSECURITYHive = 'SECURITY'
-        os.system('REG.exe SAVE HKLM\SYSTEM SYSTEM /Y >nul 2>&1')
-        os.system('REG.exe SAVE HKLM\SECURITY SECURITY /Y >nul 2>&1')
-        os.system('REG.exe SAVE HKLM\SOFTWARE SOFTWARE /Y >nul 2>&1')
+        os.system(r'REG.exe SAVE HKLM\SYSTEM SYSTEM /Y >nul 2>&1')
+        os.system(r'REG.exe SAVE HKLM\SECURITY SECURITY /Y >nul 2>&1')
+        os.system(r'REG.exe SAVE HKLM\SOFTWARE SOFTWARE /Y >nul 2>&1')
 
     for x in [sNGCFolder, sCryptoFolder, sSystemMasterKeyFolder, sVaultFolder, sWindowsbase, sSOFTWAREHive, sSYSTEMHive, sSECURITYHive]: 
         if not os.path.exists(x): exit('Error finding file/folder "{}"'.format(x))
