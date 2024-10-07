@@ -14,10 +14,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Windows Crypto Keys offline and online decryptor (& PIN brute forcer).
+r''' Windows Crypto Keys offline and online decryptor (& PIN brute forcer).
     C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\Microsoft\Crypto\Keys
     ==> These contain ECS or RSA Public and Private keys
-"""
+'''
 ## The default (9999) will perform a brute force of all 4 digit PIN combinations
 iMaxPIN = 9999
 
