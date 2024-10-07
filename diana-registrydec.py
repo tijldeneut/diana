@@ -41,7 +41,7 @@ dictAllGroups = {**dictNormalGroups, **dictDomainGroups, **dictBuiltinGroups}
 
 def checkParameters(options, args):
     if options.live:
-        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(f'REG.EXE SAVE HKLM\{x} {x} /Y >nul 2>&1')
+        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(r'REG.EXE SAVE HKLM\{} {} /Y >nul 2>&1'.format(x))
         sSOFTWAREhive = 'SOFTWARE'
         sSECURITYhive = 'SECURITY'
         sSYSTEMhive = 'SYSTEM'
@@ -176,7 +176,7 @@ def doTBALDecrypt(sSECURITYhive, sSYSTEMhive, boolVerbose = False):
         iUserBuffersize = int(reverseByte(bRemainder[4+2:4+2+2]).hex(), 16)
         sDomain = bData[iDomainPtr:iDomainPtr+iDomainLength].decode('UTF-16LE')
         sUser = bData[iUserPtr:iUserPtr+iUserLength].decode('UTF-16LE')
-        print('[+] User {}\{} has NT hash : {} and SHA1 hash : {}'.format(sDomain, sUser, bNTLM.hex(), bSHA1.hex()))
+        print(r'[+] User {}\{} has NT hash : {} and SHA1 hash : {}'.format(sDomain, sUser, bNTLM.hex(), bSHA1.hex()))
         return
     oDpaReg = dpareg.Regedit()
     lstSecrets = oDpaReg.get_lsa_secrets(sSECURITYhive, sSYSTEMhive)
