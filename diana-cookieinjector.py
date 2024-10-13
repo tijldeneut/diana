@@ -1,7 +1,27 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
+r'''
+    Copyright 2024, Tijl "Photubias" Deneut <@tijldeneut>
+    
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-## This script creates a SQlite3 cookie database
-##   Can be used in Firefox (portable) or a custom profile to access websites
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    
+    This script converts a csv output from cookie-browserdec into a SQlite3 cookie database for use in Firefox
+       Can be used in Firefox (portable) or a custom profile to access websites
+       
+    In Linux just run:
+    diana-cookieinjector.py -c cookieexport.csv -s firefox
+    For Windows, specify the fill Firefox path
+'''
 
 import sqlite3, random, string, time, os, optparse, sys
 
@@ -76,9 +96,11 @@ if __name__ == '__main__':
         if sLine.startswith('name;value'): continue
         lstData = sLine.split(';')
         ## oCur, boolOldfirefox, iID, sName, sValue, sDomain, sPath, iCreation, iExpiry, iSecure, iHTTPOnly
-        addCookieFromChrome(oCur, boolOldfirefox, iCount, lstData[0], lstData[1], lstData[2], lstData[3], lstData[6], 0, lstData[4], lstData[5])
+        try: addCookieFromChrome(oCur, boolOldfirefox, iCount, lstData[0], lstData[1], lstData[2], lstData[3], lstData[6], 0, lstData[4], lstData[5])
+        except: continue
         iCount += 1
     print('[+] Converted {} cookies'.format(iCount))
+    ## printCookies(oCur)
     oConn.commit()
     oConn.close()
 
