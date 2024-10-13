@@ -40,7 +40,7 @@ def newConnection(sFilename, boolOldfirefox):
         ##  Format for Firefox 51.0 (32-bit) Portable (pre 67)
         if boolOldfirefox: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, baseDomain TEXT, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, appId INTEGER DEFAULT 0, inBrowserElement INTEGER DEFAULT 0, CONSTRAINT moz_uniqueid UNIQUE (name, host, path, originAttributes));')
         ## Format for Firefox 100.0 (64-bit) (post 67)
-        else: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, schemeMap INTEGER DEFAULT 0, CONSTRAINT moz_uniqueid UNIQUE (name, host, path, originAttributes));')
+        else: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, schemeMap INTEGER DEFAULT 0);')
     return oCur, oConn
 
 def addCookieFromChrome(oCur, boolOldfirefox, iID, sName, sValue, sDomain, sPath, iCreation, iExpiry, iSecure, iHTTPOnly):
@@ -96,8 +96,7 @@ if __name__ == '__main__':
         if sLine.startswith('name;value'): continue
         lstData = sLine.split(';')
         ## oCur, boolOldfirefox, iID, sName, sValue, sDomain, sPath, iCreation, iExpiry, iSecure, iHTTPOnly
-        try: addCookieFromChrome(oCur, boolOldfirefox, iCount, lstData[0], lstData[1], lstData[2], lstData[3], lstData[6], 0, lstData[4], lstData[5])
-        except: continue
+        addCookieFromChrome(oCur, boolOldfirefox, iCount, lstData[0], lstData[1], lstData[2], lstData[3], lstData[6], 0, lstData[4], lstData[5])
         iCount += 1
     print('[+] Converted {} cookies'.format(iCount))
     ## printCookies(oCur)
