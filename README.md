@@ -18,13 +18,13 @@ Installing permanently (Linux):
 ```
 git clone https://github.com/tijldeneut/diana  
 cd diana  
-sudo python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt --user --break-system-packages
 sudo cp -rp *.py /usr/bin/
 ```
 
 Oneliner for Linux:  
 ```
-git clone https://github.com/tijldeneut/diana && cd diana && sudo python3 -m pip install -r requirements.txt && sudo cp -rp *.py /usr/bin/ && cd .. && sudo rm -rf diana
+git clone https://github.com/tijldeneut/diana && cd diana && python3 -m pip install -r requirements.txt --break-system-packages && sudo cp -rp *.py /usr/bin/ && cd .. && rm -rf diana
 ```
 
 Installation (Windows):  
