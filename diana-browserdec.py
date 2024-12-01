@@ -90,6 +90,7 @@ def parseLocalState(sLocalStateFile):
 def parseLoginFile(sLoginFile, lstGUIDs):
     lstLogins = []
     oConn = sqlite3.connect(sLoginFile)
+    oConn.text_factory = lambda b: b.decode(errors = 'ignore')
     oCursor = oConn.cursor()
     try:
         oCursor.execute('SELECT origin_url, username_value, password_value FROM logins')
@@ -110,6 +111,7 @@ def parseLoginFile(sLoginFile, lstGUIDs):
 def parseCookieFile(sCookieFile, lstGUIDs):
     lstCookies = []
     oConn = sqlite3.connect(sCookieFile)
+    oConn.text_factory = lambda b: b.decode(errors = 'ignore')
     oCursor = oConn.cursor()
     try:
         oCursor.execute('SELECT name, encrypted_value, host_key, path, is_secure, is_httponly, creation_utc, expires_utc FROM cookies ORDER BY host_key')
