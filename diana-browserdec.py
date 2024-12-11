@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 r'''
-Copyright 2022, Tijl "Photubias" Deneut <@tijldeneut>
+Copyright 2024, Tijl "Photubias" Deneut <@tijldeneut>
 This script provides offline decryption of Chromium based browser user data: Google Chrome, Edge Chromium and Opera
 
 Credentials (and cookies) are encrypted using a Browser Master Encryption key.
@@ -30,7 +30,7 @@ import argparse, os, json, base64, sqlite3, time, warnings, re
 from Crypto.Cipher import AES
 warnings.filterwarnings('ignore')
 try:
-    from dpapick3 import blob, masterkey
+    from dpapick3 import blob, masterkey, registry
 except ImportError:
     raise ImportError('Missing dpapick3, please install via pip install dpapick3')
 
@@ -46,9 +46,12 @@ def parseArgs():
     oParser.add_argument('--loginfile', '-l', metavar='FILE', help='Browser Login Data file (optional)')
     oParser.add_argument('--cookies', '-c', metavar='FILE', help='Browser Cookies file (optional)')
     oParser.add_argument('--masterkey', '-k', metavar='HEX', help='Masterkey, 128 HEX Characters or in SHA1 format (optional)')
+    oParser.add_argument('--systemmasterkey', '-y', metavar='FOLDER', default=os.path.join('Windows','System32','Microsoft','Protect','S-1-5-18','User'), help=r'System Masterkey folder')
     oParser.add_argument('--masterkeylist', '-f', metavar='FILE', help='File containing one or more masterkeys for mass decryption (optional)')
     oParser.add_argument('--mkfile', '-m', metavar='FILE', help='GUID file or folder to get Masterkey(s) from (optional)')
     oParser.add_argument('--sid', '-s', metavar='SID', help='User SID (optional)')
+    oParser.add_argument('--system', '-e', metavar='HIVE', default=os.path.join('Windows','System32','config','SYSTEM'), help='System Registry file (optional)')
+    oParser.add_argument('--security', '-u', metavar='HIVE', default=os.path.join('Windows','System32','config','SECURITY'), help='Security Registry file (optional)')
     oParser.add_argument('--pwdhash', '-a', metavar='HASH', help='User password SHA1 hash (optional)')
     oParser.add_argument('--password', '-p', metavar='PASS', help='User password (optional)')
     oParser.add_argument('--pvk', '-r', metavar='FILE', help='AD RSA cert in PVK format (optional)')
@@ -63,6 +66,9 @@ def parseArgs():
     if oArgs.pvk and not os.path.isfile(oArgs.pvk): exit('[-] Error: File not found: ' + oArgs.pvk)
     if oArgs.mkfile: oArgs.mkfile = oArgs.mkfile.replace('*','')
     if oArgs.mkfile and not os.path.isfile(oArgs.mkfile) and not os.path.isdir(oArgs.mkfile): exit('[-] Error: File/folder not found: ' + oArgs.mkfile)
+    if not os.path.isfile(oArgs.system): oArgs.system = None
+    if not os.path.isfile(oArgs.security): oArgs.security = None
+    if not os.path.isdir(oArgs.systemmasterkey): oArgs.systemmasterkey = None
     if oArgs.mkfile and not oArgs.sid: 
         try:
             oArgs.sid = re.findall(r"S-1-\d+-\d+-\d+-\d+-\d+-\d+", oArgs.mkfile)[0]
@@ -79,13 +85,17 @@ def parseLocalState(sLocalStateFile):
     try:
         with open(sLocalStateFile, 'r') as oFile: lLocalState = json.loads(oFile.read())
         oFile.close()
-        sDPAPIBlob = base64.b64decode(lLocalState["os_crypt"]["encrypted_key"])[5:]
-    except:
-        print('[-] Error: file ' + sLocalStateFile + ' not a (correct) State file')
-        return False
+        bDPAPIBlob = base64.b64decode(lLocalState['os_crypt']['encrypted_key'])[5:]
+        if 'app_bound_encrypted_key' in lLocalState['os_crypt']:
+            bABESystemData = base64.b64decode(lLocalState['os_crypt']['app_bound_encrypted_key']).strip(b'\x00')
+            if bABESystemData[:4] == b'APPB': oABESystemBlob = blob.DPAPIBlob(bABESystemData[4:])
+    except Exception as e:
+        print(f'[-] Error: file {sLocalStateFile} not a (correct) State file')
+        print(e)
+        return False, None
 
-    oBlob = blob.DPAPIBlob(sDPAPIBlob)
-    return oBlob
+    oBlob = blob.DPAPIBlob(bDPAPIBlob)
+    return oBlob, oABESystemBlob
 
 def parseLoginFile(sLoginFile, lstGUIDs):
     lstLogins = []
@@ -111,10 +121,9 @@ def parseLoginFile(sLoginFile, lstGUIDs):
 def parseCookieFile(sCookieFile, lstGUIDs):
     lstCookies = []
     oConn = sqlite3.connect(sCookieFile)
-    oConn.text_factory = lambda b: b.decode(errors = 'ignore')
     oCursor = oConn.cursor()
     try:
-        oCursor.execute('SELECT name, encrypted_value, host_key, path, is_secure, is_httponly, creation_utc, expires_utc FROM cookies ORDER BY host_key')
+        oCursor.execute('SELECT name, CAST(encrypted_value AS BLOB), host_key, path, is_secure, is_httponly, creation_utc, expires_utc FROM cookies ORDER BY host_key')
         for lstData in oCursor.fetchall():
             if lstData[1][:4] == b'\x01\x00\x00\x00': 
                 oBlob = blob.DPAPIBlob(lstData[1])
@@ -123,12 +132,13 @@ def parseCookieFile(sCookieFile, lstGUIDs):
     except Exception as e:
         print('[-] Error reading Cookies file, make sure it is not in use.')
         print(e)
+        exit()
     oCursor.close()
     oConn.close()
     
     return lstCookies, lstGUIDs ## lstCookies = list of lists (name, blob, domain, path, secureconnection, httponly, created, expires)
 
-def decryptBMEKey(oBlob, bMasterkey):
+def tryDPAPIDecrypt(oBlob, bMasterkey):
     try: 
         if oBlob.decrypt(bMasterkey): return oBlob.cleartext
     except: pass
@@ -140,13 +150,23 @@ def decryptChromeString(bData, bBMEKey, lstMasterkeys, boolVerbose = False):
         for bMK in lstMasterkeys:
             oBlob.decrypt(bMK)
             if oBlob.decrypted: return oBlob.cleartext.decode(errors='ignore')
-    else:
+    elif bData[:3] == b'v20' or bData[:3] == 'v20': ## Version|IV|ciphertext|tag, 3|12|<var>|16 bytes
+        ## New Encryption Scheme, need SYSTEM DPAPI key
+        bIV = bData[3:15]
+        bEncrypted = bData[15:-16]
+        bTag = bData[-16:]
+        oCipher = AES.new(bBMEKey, AES.MODE_GCM, bIV)
+        bDecrypted = oCipher.decrypt(bEncrypted)
+        return bDecrypted[32:].decode(errors='ignore')
+    else: ## Version|IV|ciphertext, 4|12|<var>
         try:
             bIV = bData[3:15]
-            bPayload = bData[15:]
+            bEncrypted = bData[15:]
             oCipher = AES.new(bBMEKey, AES.MODE_GCM, bIV)
-            bDecrypted = oCipher.decrypt(bPayload)
-            return bDecrypted[:-16].decode(errors='ignore')
+            bDecrypted = oCipher.decrypt(bEncrypted)
+            try: return bDecrypted[:-16].decode()
+            except: return ''
+            #return bDecrypted[:-16].decode(errors='ignore')
         except: 
             if boolVerbose: print('[-] Error decrypting, maybe Browser Engine < v80')
             pass
@@ -175,6 +195,7 @@ def decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, sCSVFile = None, b
         oFile = open('cookies_' + sCSVFile, 'a')
         oFile.write('name;value;host_key;path;is_secure;is_httponly;creation_utc;expires_utc\n')
     for lstCookie in lstCookies:
+        decryptChromeString(lstCookie[1], bBrowserBMEKey, lstMasterkeys)
         try: 
             sDecrypted = decryptChromeString(lstCookie[1], bBrowserBMEKey, lstMasterkeys)
             ## Chrome timestamp is "amount of microseconds since 01-01-1601", so we need math
@@ -201,13 +222,14 @@ def decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, sCSVFile = None, b
 
 if __name__ == '__main__':
     oArgs = parseArgs()
-    lstGUIDs, lstLogins, lstCookies, lstMasterkeys = [], [], [], []
-    bBrowserBMEKey = bMasterkey = oMKP = None
+    lstGUIDs, lstLogins, lstCookies, lstMasterkeys, lstSystemMasterkeys = [], [], [], [], []
+    bBrowserBMEKey = bMasterkey = oMKP = oABESystemBlob = oABEUserBlob = bBrowserABEKey = bABEMasterkey = None
     
     ## List required GUID from Local State
-    oStateBlob = parseLocalState(oArgs.statefile)
+    oStateBlob, oABESystemBlob = parseLocalState(oArgs.statefile)
     print('[+] Browser State File encrypted with Masterkey GUID: ' + oStateBlob.mkguid)
     lstGUIDs.append(oStateBlob.mkguid)
+    if oABESystemBlob: print('    And also the ABE-Key requires the SYSTEM Masterkey with GUID: ' + oABESystemBlob.mkguid)
 
     ## Get Logins, if any
     if oArgs.loginfile: 
@@ -218,17 +240,36 @@ if __name__ == '__main__':
     if oArgs.cookies: 
         lstCookies, lstGUIDs = parseCookieFile(oArgs.cookies, lstGUIDs)
         print('[!] Found {} cookie(s).'.format(str(len(lstCookies))))
-    
+
+    ## Decrypting ABE Blob
+    if oArgs.system and oArgs.security and oArgs.systemmasterkey and oABESystemBlob:
+        print('[+] Found SYSTEM & SECURITY hives, trying first-stage ABE Key decrypting using SYSTEM keys')
+        oReg = registry.Regedit()
+        oSecrets = oReg.get_lsa_secrets(oArgs.security, oArgs.system)
+        bDPAPI_SYSTEM = oSecrets.get('DPAPI_SYSTEM')['CurrVal']
+        oMKP1 = masterkey.MasterKeyPool()
+        oMKP1.loadDirectory(oArgs.systemmasterkey)
+        oMKP1.addSystemCredential(bDPAPI_SYSTEM)
+        oMKP1.try_credential_hash(None, None)
+        for lstMKL in oMKP1.keys.values():
+            for oMK in lstMKL:
+                bABEUserData = tryDPAPIDecrypt(oABESystemBlob, oMK.get_key()) 
+                if bABEUserData:
+                    oABEUserBlob = blob.DPAPIBlob(bABEUserData)
+                    print('[+] Decrypted first-stage of ABE-Key, needed for second-stage is USER Masterkey with GUID: {}'.format(oABEUserBlob.mkguid))
+                    lstGUIDs.append(oABEUserBlob.mkguid)
+                    break
+
     ## If no decryption details are provided, feed some results back
     if not oArgs.masterkey and not oArgs.masterkeylist and not oArgs.mkfile: 
         if(len(lstGUIDs) > 1):
             lstGUIDs.sort()
-            print('[!] Found {} different Masterkeys, required for decrypting all logins and/or cookies:'.format(str(len(lstGUIDs))) )
+            print('[!] Required for full decryption are {} different Masterkeys, their GUIDs:'.format(str(len(lstGUIDs))) )
             for sGUID in lstGUIDs: print('    ' + sGUID)
         print('[!] Go and find these files and accompanying decryption details')
         exit(0)
-        
-    print('\n ----- Getting Browser Master Encryption Key -----')
+    
+    print('\n ----- Getting Browser (& ABE) Master Encryption Key -----')
     ## Option 1 for getting BME Key: the 64byte DPAPI masterkey is provided (either directly or via a list)
     if oArgs.masterkey: 
         print('[!] Trying direct masterkey')
@@ -238,14 +279,12 @@ if __name__ == '__main__':
         for sMasterkey in open(oArgs.masterkeylist,'r').read().splitlines(): 
             if len(sMasterkey.strip()) == 128 or len(sMasterkey.strip()) == 40: lstMasterkeys.append(bytes.fromhex(sMasterkey.strip()))
         for bMK in lstMasterkeys:
-            bBrowserBMEKey = decryptBMEKey(oStateBlob, bMK)
-            if bBrowserBMEKey: break
-       
+            bBrowserBMEKey = tryDPAPIDecrypt(oStateBlob, bMK)
+            if oABEUserBlob: bBrowserABEKey = tryDPAPIDecrypt(oABEUserBlob, bMK)
     ##  All other options require one or more MK files, using MK Pool
     if oArgs.mkfile:
         oMKP = masterkey.MasterKeyPool()
-        if os.path.isfile(oArgs.mkfile): 
-            oMKP.addMasterKey(open(oArgs.mkfile,'rb').read())
+        if os.path.isfile(oArgs.mkfile): oMKP.addMasterKey(open(oArgs.mkfile,'rb').read())
         else: 
             oMKP.loadDirectory(oArgs.mkfile)
             if oArgs.verbose: print('[!] Imported {} keys'.format(str(len(list(oMKP.keys)))))
@@ -271,14 +310,22 @@ if __name__ == '__main__':
             oMK = oMKP.getMasterKeys(bMKGUID)[0]
             if oMK.decrypted: 
                 if not oMK.get_key() in lstMasterkeys: lstMasterkeys.append(oMK.get_key())
+                if oABEUserBlob and bMKGUID.decode(errors='ignore') == oABEUserBlob.mkguid:
+                    bABEMasterkey = oMK.get_key()
+                    print('[+] Success, ABE masterkey decrypted: {}'.format(bABEMasterkey.hex()))
                 if bMKGUID.decode(errors='ignore') == oStateBlob.mkguid: 
                     bMasterkey = oMK.get_key()
-                    print('[+] Success, user masterkey decrypted: ' + bMasterkey.hex())
-
+                    print('[+] Success, Browser masterkey decrypted: {}'.format(bMasterkey.hex()))
+    if not bBrowserABEKey:
+        bBrowserABEKey = tryDPAPIDecrypt(oABEUserBlob, bABEMasterkey)
+        if bABEMasterkey not in lstMasterkeys: lstMasterkeys.append(bABEMasterkey)
+    if bBrowserABEKey:  
+        bBrowserABEKey = bBrowserABEKey[-32:]
+        print(f'\n[+] Got ABE Master Encryption Key: {bBrowserABEKey.hex()}')
     if not bBrowserBMEKey: 
-        bBrowserBMEKey = decryptBMEKey(oStateBlob, bMasterkey)
+        bBrowserBMEKey = tryDPAPIDecrypt(oStateBlob, bMasterkey)
         if bMasterkey not in lstMasterkeys: lstMasterkeys.append(bMasterkey)
-    if bBrowserBMEKey: print('[+] Got Browser Master Encryption Key: {}\n'.format(bBrowserBMEKey.hex()))
+    if bBrowserBMEKey: print(f'[+] Got Browser Master Encryption Key: {bBrowserBMEKey.hex()}\n')
     else: 
         print('[-] Too bad, no dice, not enough or wrong information')
         exit(0)
@@ -287,11 +334,12 @@ if __name__ == '__main__':
     ## Decrypting logins
     if bBrowserBMEKey and lstLogins:
         iDecrypted = decryptLogins(lstLogins, bBrowserBMEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
-        print('Decrypted {} / {} credentials'.format(str(iDecrypted), str(len(lstLogins))))
+        print(f'Decrypted {iDecrypted} / {len(lstLogins)} credentials')
 
-    ## Decrypting logins
+    ## Decrypting cookies
     if bBrowserBMEKey and lstCookies:
-        iDecrypted = decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
-        print('Decrypted {} / {} cookies'.format(str(iDecrypted), str(len(lstCookies))))
+        if bBrowserABEKey: iDecrypted = decryptCookies(lstCookies, bBrowserABEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
+        else: iDecrypted = decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
+        print(f'Decrypted {iDecrypted} / {len(lstCookies)} cookies')
     
     if not oArgs.verbose and bBrowserBMEKey: print('[!] To print the results to terminal, rerun with "-v"')
