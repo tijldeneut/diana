@@ -1,5 +1,15 @@
 # DIANA Windows Credential Toolkit
-
+```
+ _______   ______   ______   __    __   ______    
+/       \ /      | /      \ /  \  /  | /      \   
+$$$$$$$  |$$$$$$/ /$$$$$$  |$$  \ $$ |/$$$$$$  |  
+$$ |  $$ |  $$ |  $$ |__$$ |$$$  \$$ |$$ |__$$ |  
+$$ |  $$ |  $$ |  $$    $$ |$$$$  $$ |$$    $$ |  
+$$ |  $$ |  $$ |  $$$$$$$$ |$$ $$ $$ |$$$$$$$$ |  
+$$ |__$$ | _$$ |_ $$ |  $$ |$$ |$$$$ |$$ |  $$ |  
+$$    $$/ / $$   |$$ |  $$ |$$ | $$$ |$$ |  $$ |  
+$$$$$$$/  $$$$$$/ $$/   $$/ $$/   $$/ $$/   $$/ 
+```
 It's a Work-In-Progress, so feel free to create some issues  
 Please see "How to Use" and ask questions.  
 
@@ -51,7 +61,7 @@ appreciated.
 - **diana-dpapiblobdec.py**: Works on *system* or *user* DPAPI BLOB files: parsing and/or decrypting using decrypted MasterKey or files
 - **diana-vaultdec.py**: Decrypt secrets in VAULT vcrd files, both SYSTEM and USER based
 - **diana-creddec.py**: Decrypt credentials in CREDENTIAL files, both SYSTEM and USER based
-- **diana-browserdec.py**: Decrypt passwords and cookies from all Chromium based browsers (Chrome, Edge, Opera ...)
+- **diana-browserdec.py**: Decrypt passwords and cookies from all Chromium based browsers (Chrome, Edge, Opera ...), now supports ABE - App Bound Encryption 
 - **diana-browserdec-ng.py**: Decrypt passwords and cookies from all Chromium based browsers (Chrome, Edge, Opera ...), extra features: color, decrypting Notes and listing deleted Logins
 - **diana-wifidec.py**: Decrypt Windows Wi-Fi profiles, including passwords, SYSTEM based
 - **diana-wifipeapdec.py**: Decrypt Windows Wi-Fi Enterprise profiles, requires SYSTEM & USER data
