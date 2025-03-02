@@ -39,8 +39,8 @@ def newConnection(sFilename, boolOldfirefox):
     if boolNewfile:
         ##  Format for Firefox 51.0 (32-bit) Portable (pre 67)
         if boolOldfirefox: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, baseDomain TEXT, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, appId INTEGER DEFAULT 0, inBrowserElement INTEGER DEFAULT 0, CONSTRAINT moz_uniqueid UNIQUE (name, host, path, originAttributes));')
-        ## Format for Firefox 100.0 (64-bit) (post 67)
-        else: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, schemeMap INTEGER DEFAULT 0);')
+        ## Format for Firefox 100.0 (64-bit) (post 67), updated for Firefox 128 (new column)
+        else: oCur.execute('CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT NOT NULL DEFAULT "", name TEXT, value TEXT, host TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, schemeMap INTEGER DEFAULT 0, isPartitionedAttributeSet INTEGER DEFAULT 0);')
     return oCur, oConn
 
 def addCookieFromChrome(oCur, boolOldfirefox, iID, sName, sValue, sDomain, sPath, iCreation, iExpiry, iSecure, iHTTPOnly):
@@ -56,7 +56,7 @@ def addCookieFromChrome(oCur, boolOldfirefox, iID, sName, sValue, sDomain, sPath
     if boolOldfirefox: oCur.execute('INSERT INTO moz_cookies VALUES({},\'{}\',"",\'{}\',\'{}\',\'{}\',\'{}\',{},{},{},{},{},0,0);'.format(iID, sBaseDomain, sName.replace('\'','"'), sValue.replace('\'','"'), sDomain, sPath, iExpiry, iLastAccessed, iCreationTime, iSecure, iHTTPOnly))
     ## Format for Firefox 100.0 (64-bit) (post 67)
     ## id, '', name, value, host, path, expiry, lastaccessed, creation, secure, httponly, 0, 0, 0, 0
-    else: oCur.execute('INSERT INTO moz_cookies VALUES({},"",\'{}\',\'{}\',\'{}\',\'{}\',{},{},{},{},{},0,0,0,0);'.format(iID, sName.replace('\'','"'), sValue.replace('\'','"'), sDomain, sPath, iExpiry, iLastAccessed, iCreationTime, iSecure, iHTTPOnly))
+    else: oCur.execute('INSERT INTO moz_cookies VALUES({},"",\'{}\',\'{}\',\'{}\',\'{}\',{},{},{},{},{},0,0,0,0,0);'.format(iID, sName.replace('\'','"'), sValue.replace('\'','"'), sDomain, sPath, iExpiry, iLastAccessed, iCreationTime, iSecure, iHTTPOnly))
     return
 
 def printCookies(oCur, sDomain = None):
