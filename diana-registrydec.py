@@ -27,7 +27,6 @@ Specifically to find general system info (users, computername, versions)
 
 from hashlib import md5
 from hashlib import new as hashlibnew
-from struct import unpack, pack
 import os, time, optparse, datetime
 import dpapick3.registry as dpareg ## python3 -m pip install --upgrade dpapick3
 from Registry.Registry import Registry ## python3 -m pip install --upgrade python-registry (required for dpapick3)
@@ -425,27 +424,6 @@ def getLocalHashes(sSYSTEMhive, sSAMhive, lstUsers, boolVerbose = True):
         bDesKey1 = bytes.fromhex(doDesBitCals(bDesSrc1))
         bDesKey2 = bytes.fromhex(doDesBitCals(bDesSrc2))
         return bDesKey1, bDesKey2
-
-    def getHash(sam_key, user_account, rid, offset, des_keys, password_salt):
-        iHashOffset = unpack('<L', user_account[0x0c * offset:0x0c * offset + 4])[0] + 0xcc
-        iHashLength = unpack('<L', user_account[0x0c * offset + 4:0x0c * offset + 8])[0]
-        hash_entry = user_account[iHashOffset:iHashOffset + iHashLength]
-
-        if hash_entry[2] == 1:
-            xx = sam_key[:0x10] + pack('<L', rid) + password_salt
-            rc4_key = md5(xx).digest()
-            encrypted_hash = ARC4.new(rc4_key).encrypt(hash_entry[4:20])
-        elif hash_entry[2] == 2:
-            aes_salt = hash_entry[0x08:0x18]
-            aes = AES.new(sam_key, AES.MODE_CBC, aes_salt)
-            encrypted_hash = aes.decrypt(hash_entry[0x18:])
-        else:
-            raise Exception(f'Unknow SAM_HASH revision {hash_entry[2]}')
-
-        d1, d2 = map(lambda k: DES.new(k, DES.MODE_ECB), des_keys)
-        decrypted_hash = d1.decrypt(encrypted_hash[:8]) + d2.decrypt(encrypted_hash[8:16])
-        return decrypted_hash.hex()
-
     bBootKey = getBootKey(sSYSTEMhive)
     if boolVerbose: print(f'[+] Bootkey  : {bBootKey.hex()}')
     oSysReg = Registry(sSAMhive)
