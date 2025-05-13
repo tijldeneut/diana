@@ -27,7 +27,7 @@ e.g. mkudec.py %appdata%\Roaming\Microsoft\Protect\<SID>\* -a <hash> | findstr S
 '''
 
 import argparse, os, json, base64, sqlite3, time, warnings, re
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, ChaCha20_Poly1305
 warnings.filterwarnings('ignore')
 try:
     from dpapick3 import blob, masterkey, registry
@@ -144,20 +144,24 @@ def tryDPAPIDecrypt(oBlob, bMasterkey):
     except: pass
     return None
 
-def decryptChromeString(bData, bBMEKey, lstMasterkeys, boolVerbose = False):
+def decryptChromeString(bData, bBMEKey, bABEKey, lstMasterkeys, boolVerbose = False):
     if bData[:4] == b'\x01\x00\x00\x00':
         oBlob = blob.DPAPIBlob(bData)
         for bMK in lstMasterkeys:
             oBlob.decrypt(bMK)
             if oBlob.decrypted: return oBlob.cleartext.decode(errors='ignore')
     elif bData[:3] == b'v20' or bData[:3] == 'v20': ## Version|IV|ciphertext|tag, 3|12|<var>|16 bytes
-        ## New Encryption Scheme, need SYSTEM DPAPI key
+        ## v20 is encrypted using the app-bound encryption key (ABE)
         bIV = bData[3:15]
         bEncrypted = bData[15:-16]
         bTag = bData[-16:]
-        oCipher = AES.new(bBMEKey, AES.MODE_GCM, bIV)
-        bDecrypted = oCipher.decrypt(bEncrypted)
-        return bDecrypted[32:].decode(errors='ignore')
+        oCipher = AES.new(bABEKey, AES.MODE_GCM, bIV)
+        try:
+            bDecrypted = oCipher.decrypt_and_verify(bEncrypted, bTag)
+        except ValueError as e:
+            print(f"[-] Error decrypting Chrome ABE (v20) password: {", ".join(e.args)}")
+            return ""
+        return bDecrypted.decode(errors='ignore')
     else: ## Version|IV|ciphertext, 4|12|<var>
         try:
             bIV = bData[3:15]
@@ -172,13 +176,13 @@ def decryptChromeString(bData, bBMEKey, lstMasterkeys, boolVerbose = False):
             pass
     return None
 
-def decryptLogins(lstLogins, bBrowserBMEKey, lstMasterkeys, sCSVFile = None, boolVerbose = False):
+def decryptLogins(lstLogins, bBMEKey, bABEKey,  lstMasterkeys, sCSVFile = None, boolVerbose = False):
     iDecrypted = 0
     if sCSVFile: 
         oFile = open('logins_' + sCSVFile, 'a')
         oFile.write('URL;Username;Password\n')
     for lstLogin in lstLogins:
-        sDecrypted = decryptChromeString(lstLogin[2], bBrowserBMEKey, lstMasterkeys)
+        sDecrypted = decryptChromeString(lstLogin[2], bBMEKey, bABEKey, lstMasterkeys)
         if boolVerbose: 
                 print('URL:       {}'.format(lstLogin[0]))
                 print('User Name: {}'.format(lstLogin[1]))
@@ -189,15 +193,15 @@ def decryptLogins(lstLogins, bBrowserBMEKey, lstMasterkeys, sCSVFile = None, boo
     if sCSVFile: oFile.close()
     return iDecrypted
 
-def decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, sCSVFile = None, boolVerbose = False):
+def decryptCookies(lstCookies, bBMEKey, bABEKey, lstMasterkeys, sCSVFile = None, boolVerbose = False):
     iDecrypted = 0
     if sCSVFile: 
         oFile = open('cookies_' + sCSVFile, 'a')
         oFile.write('name;value;host_key;path;is_secure;is_httponly;creation_utc;expires_utc\n')
     for lstCookie in lstCookies:
-        decryptChromeString(lstCookie[1], bBrowserBMEKey, lstMasterkeys)
+        decryptChromeString(lstCookie[1], bBMEKey, bABEKey, lstMasterkeys)
         try: 
-            sDecrypted = decryptChromeString(lstCookie[1], bBrowserBMEKey, lstMasterkeys)
+            sDecrypted = decryptChromeString(lstCookie[1], bBMEKey, bABEKey, lstMasterkeys)
             ## Chrome timestamp is "amount of microseconds since 01-01-1601", so we need math
             sCreated = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(lstCookie[6] / 1000000 - 11644473600))
             sExpires = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(lstCookie[7] / 1000000 - 11644473600))
@@ -318,9 +322,33 @@ if __name__ == '__main__':
                     print('[+] Success, Browser masterkey decrypted: {}'.format(bMasterkey.hex()))
     if not bBrowserABEKey:
         bBrowserABEKey = tryDPAPIDecrypt(oABEUserBlob, bABEMasterkey)
-        if bABEMasterkey not in lstMasterkeys: lstMasterkeys.append(bABEMasterkey)
-    if bBrowserABEKey:  
-        bBrowserABEKey = bBrowserABEKey[-32:]
+        if bABEMasterkey not in lstMasterkeys:
+            lstMasterkeys.append(bABEMasterkey)
+    if bBrowserABEKey:
+        if bBrowserABEKey[0:5] == b'\x1f\x00\x00\x00\x02' and "Chrome" in bBrowserABEKey.decode(errors="ignore"):
+            # Additional steps for Chrome, see: https://github.com/runassu/chrome_v20_decryption/blob/main/README.md
+            if oArgs.verbose: print('[!] Trying to decrypt Chrome ABE key with known static keys')
+            aes_key = bytes.fromhex("B31C6E241AC846728DA9C1FAC4936651CFFB944D143AB816276BCC6DA0284787")
+            chacha20_key = bytes.fromhex("E98F37D7F4E1FA433D19304DC2258042090E2D1D7EEA7670D41F738D08729660")
+            bFlag =bBrowserABEKey[-61:-60]
+            bIv = bBrowserABEKey[-60:-48]
+            bCiphertext = bBrowserABEKey[-48:-16]
+            bTag = bBrowserABEKey[-16:]
+            if bFlag == b"\x01":
+                if oArgs.verbose: print(f"[!] Using AES-GCM with static key: {aes_key.hex()}")
+                cipher = AES.new(aes_key, AES.MODE_GCM, nonce=bIv)
+            elif bFlag == b"\x02":
+                if oArgs.verbose: print(f"[!] Using ChaCha20-Poly1305 with static key: {chacha20_key.hex()}")
+                cipher = ChaCha20_Poly1305.new(key=chacha20_key, nonce=bIv)
+            else:
+                raise ValueError("Unknown flag '{}'".format(bFlag))
+            try:
+                bBrowserABEKey = cipher.decrypt_and_verify(bCiphertext, bTag)
+                print("[+] Success, decrypted ABE key: {}".format(bBrowserABEKey.hex()))
+            except ValueError:
+                pass
+        else:
+            bBrowserABEKey = bBrowserABEKey[-32:]
         print(f'\n[+] Got ABE Master Encryption Key: {bBrowserABEKey.hex()}')
     if not bBrowserBMEKey: 
         bBrowserBMEKey = tryDPAPIDecrypt(oStateBlob, bMasterkey)
@@ -331,15 +359,15 @@ if __name__ == '__main__':
         exit(0)
 
     if oArgs.loginfile or oArgs.cookies: print('\n ----- Decrypting logins/cookies -----')
-    ## Decrypting logins
-    if bBrowserBMEKey and lstLogins:
-        iDecrypted = decryptLogins(lstLogins, bBrowserBMEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
-        print(f'Decrypted {iDecrypted} / {len(lstLogins)} credentials')
+    if bBrowserBMEKey or bBrowserABEKey:
+        if lstLogins:
+            ## Decrypting logins
+            iDecrypted = decryptLogins(lstLogins, bBrowserBMEKey, bBrowserABEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
+            print(f'Decrypted {iDecrypted} / {len(lstLogins)} credentials')
 
-    ## Decrypting cookies
-    if bBrowserBMEKey and lstCookies:
-        if bBrowserABEKey: iDecrypted = decryptCookies(lstCookies, bBrowserABEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
-        else: iDecrypted = decryptCookies(lstCookies, bBrowserBMEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
-        print(f'Decrypted {iDecrypted} / {len(lstCookies)} cookies')
+        if lstCookies:
+            ## Decrypting cookies
+            iDecrypted = decryptCookies(lstCookies, bBrowserBMEKey, bBrowserABEKey, lstMasterkeys, oArgs.export, oArgs.verbose)
+            print(f'Decrypted {iDecrypted} / {len(lstCookies)} cookies')
     
     if not oArgs.verbose and bBrowserBMEKey: print('[!] To print the results to terminal, rerun with "-v"')
