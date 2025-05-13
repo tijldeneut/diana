@@ -41,7 +41,7 @@ dictAllGroups = {**dictNormalGroups, **dictDomainGroups, **dictBuiltinGroups}
 
 def checkParameters(options, args):
     if options.live:
-        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(r'REG.EXE SAVE HKLM\{} {} /Y >nul 2>&1'.format(x))
+        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(r'REG.EXE SAVE HKLM\{} {} /Y >nul 2>&1'.format(x, x))
         sSOFTWAREhive = 'SOFTWARE'
         sSECURITYhive = 'SECURITY'
         sSYSTEMhive = 'SYSTEM'
