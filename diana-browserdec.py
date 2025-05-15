@@ -82,6 +82,7 @@ def parseArgs():
     return oArgs
 
 def parseLocalState(sLocalStateFile):
+    oABESystemBlob = None
     try:
         with open(sLocalStateFile, 'r') as oFile: lLocalState = json.loads(oFile.read())
         oFile.close()
