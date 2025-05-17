@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 r'''
-Copyright 2024, Tijl "Photubias" Deneut <@tijldeneut>
+Copyright 2025, Tijl "Photubias" Deneut <@tijldeneut>
 This script provides offline decryption of Chromium based browser user data: Google Chrome, Edge Chromium and Opera
 
 Credentials (and cookies) are encrypted using a Browser Master Encryption key.
@@ -24,6 +24,9 @@ The secret within the MK file can be decrypted either via Local AD Domain RSA Ke
 ## Generating a list of decrypted MK's can be done with mkudec.py:
 e.g. mkudec.py %appdata%\Roaming\Microsoft\Protect\<SID>\* -a <hash> | findstr Secret > masterkeylist.txt
 #> and remove all strings '    Secret:'
+
+UPDATE 2024-07-23: Since Chrome v127 a new encryption layer ('v20') was introduced called "Application Bound Encryption (ABE)", System DPAPI data required
+UPDATE 2025-02-04: Since Chrome v133 the encryption algorithm changed from AES-GCM to ChaCha20-Poly1305 (Thank You @MrMcX)
 '''
 
 import argparse, os, json, base64, sqlite3, time, warnings, re
@@ -72,7 +75,7 @@ def parseArgs():
     if oArgs.mkfile and not oArgs.sid: 
         try:
             oArgs.sid = re.findall(r"S-1-\d+-\d+-\d+-\d+-\d+-\d+", oArgs.mkfile)[0]
-            print('[+] Detected SID: ' + oArgs.sid)
+            print(f'[+] Detected SID: {oArgs.sid}')
         except: pass
     if oArgs.mkfile and oArgs.sid and not oArgs.password and not oArgs.pwdhash: 
         oArgs.pwdhash = 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
@@ -82,21 +85,22 @@ def parseArgs():
     return oArgs
 
 def parseLocalState(sLocalStateFile):
-    oABESystemBlob = None
+    oABESystemBlob = sVersion = None
     try:
-        with open(sLocalStateFile, 'r') as oFile: lLocalState = json.loads(oFile.read())
+        with open(sLocalStateFile, 'r') as oFile: jsonLocalState = json.loads(oFile.read())
         oFile.close()
-        bDPAPIBlob = base64.b64decode(lLocalState['os_crypt']['encrypted_key'])[5:]
-        if 'app_bound_encrypted_key' in lLocalState['os_crypt']:
-            bABESystemData = base64.b64decode(lLocalState['os_crypt']['app_bound_encrypted_key']).strip(b'\x00')
+        bDPAPIBlob = base64.b64decode(jsonLocalState['os_crypt']['encrypted_key'])[5:]
+        if 'app_bound_encrypted_key' in jsonLocalState['os_crypt']:
+            bABESystemData = base64.b64decode(jsonLocalState['os_crypt']['app_bound_encrypted_key']).strip(b'\x00')
             if bABESystemData[:4] == b'APPB': oABESystemBlob = blob.DPAPIBlob(bABESystemData[4:])
+        if 'variations_permanent_consistency_country' in jsonLocalState: sVersion = jsonLocalState['variations_permanent_consistency_country'][0]
     except Exception as e:
         print(f'[-] Error: file {sLocalStateFile} not a (correct) State file')
         print(e)
-        return False, None
+        return False, oABESystemBlob, sVersion
 
     oBlob = blob.DPAPIBlob(bDPAPIBlob)
-    return oBlob, oABESystemBlob
+    return oBlob, oABESystemBlob, sVersion
 
 def parseLoginFile(sLoginFile, lstGUIDs):
     lstLogins = []
@@ -160,8 +164,8 @@ def decryptChromeString(bData, bBMEKey, bABEKey, lstMasterkeys, boolVerbose = Fa
         try:
             bDecrypted = oCipher.decrypt_and_verify(bEncrypted, bTag)
         except ValueError as e:
-            print(f"[-] Error decrypting Chrome ABE (v20) password: {", ".join(e.args)}")
-            return ""
+            print(f'[-] Error decrypting Chrome ABE (v20) password: {', '.join(e.args)}')
+            return ''
         return bDecrypted.decode(errors='ignore')
     else: ## Version|IV|ciphertext, 4|12|<var>
         try:
@@ -185,9 +189,9 @@ def decryptLogins(lstLogins, bBMEKey, bABEKey,  lstMasterkeys, sCSVFile = None, 
     for lstLogin in lstLogins:
         sDecrypted = decryptChromeString(lstLogin[2], bBMEKey, bABEKey, lstMasterkeys)
         if boolVerbose: 
-                print('URL:       {}'.format(lstLogin[0]))
-                print('User Name: {}'.format(lstLogin[1]))
-                print('Password:  {}'.format(sDecrypted))
+                print(f'URL:       {lstLogin[0]}')
+                print(f'User Name: {lstLogin[1]}')
+                print(f'Password:  {sDecrypted}')
                 print('*' * 50)
         if sDecrypted != None: iDecrypted += 1
         if sCSVFile: oFile.write('{};{};{}\n'.format(lstLogin[0], lstLogin[1], sDecrypted))
@@ -209,16 +213,16 @@ def decryptCookies(lstCookies, bBMEKey, bABEKey, lstMasterkeys, sCSVFile = None,
         except:
             continue
         if boolVerbose: 
-                print('Name:      {}'.format(lstCookie[0]))
-                print('Content:   {}'.format(sDecrypted))
-                print('Domain:    {}'.format(lstCookie[2]))
-                print('Path:      {}'.format(lstCookie[3]))
+                print(f'Name:      {lstCookie[0]}')
+                print(f'Content:   {sDecrypted}')
+                print(f'Domain:    {lstCookie[2]}')
+                print(f'Path:      {lstCookie[3]}')
                 if lstCookie[4] == 1: print('Send for:  Secure connections only')
                 else: print('Send for:  Any kind of connection')
                 if lstCookie[5] == 1: print('HttpOnly:  Yes')
                 else: print('HttpOnly:  No (Accessible to scripts)')
-                print('Created:   {}'.format(sCreated))
-                print('Expires:   {}'.format(sExpires))
+                print(f'Created:   {sCreated}')
+                print(f'Expires:   {sExpires}')
                 print('*' * 50)
         if sDecrypted: iDecrypted += 1
         if sCSVFile: oFile.write('{};{};{};{};{};{};{};{}\n'.format(lstCookie[0], sDecrypted, lstCookie[2], lstCookie[3], lstCookie[4], lstCookie[5], lstCookie[6], lstCookie[7]))
@@ -231,10 +235,11 @@ if __name__ == '__main__':
     bBrowserBMEKey = bMasterkey = oMKP = oABESystemBlob = oABEUserBlob = bBrowserABEKey = bABEMasterkey = None
     
     ## List required GUID from Local State
-    oStateBlob, oABESystemBlob = parseLocalState(oArgs.statefile)
-    print('[+] Browser State File encrypted with Masterkey GUID: ' + oStateBlob.mkguid)
+    oStateBlob, oABESystemBlob, sVersion = parseLocalState(oArgs.statefile)
+    print(f'[+] Browser State File encrypted with Masterkey GUID: {oStateBlob.mkguid}')
     lstGUIDs.append(oStateBlob.mkguid)
-    if oABESystemBlob: print('    And also the ABE-Key requires the SYSTEM Masterkey with GUID: ' + oABESystemBlob.mkguid)
+    if oABESystemBlob: print(f'    And also the ABE-Key requires the SYSTEM Masterkey with GUID: {oABESystemBlob.mkguid}')
+    if sVersion: print(f'    > Detected Browser version: {sVersion}')
 
     ## Get Logins, if any
     if oArgs.loginfile: 
@@ -261,16 +266,19 @@ if __name__ == '__main__':
                 bABEUserData = tryDPAPIDecrypt(oABESystemBlob, oMK.get_key()) 
                 if bABEUserData:
                     oABEUserBlob = blob.DPAPIBlob(bABEUserData)
-                    print('[+] Decrypted first-stage of ABE-Key, needed for second-stage is USER Masterkey with GUID: {}'.format(oABEUserBlob.mkguid))
+                    print(f'[+] Decrypted first-stage of ABE-Key, needed for second-stage is USER Masterkey with GUID: {oABEUserBlob.mkguid}')
                     lstGUIDs.append(oABEUserBlob.mkguid)
                     break
 
     ## If no decryption details are provided, feed some results back
+    if oABESystemBlob and (not oArgs.system or not oArgs.security or not oArgs.systemmasterkey):
+        print(f'[!] Unable to decrypt the ABE blob, please specify System & Security hives and Masterkey with GUID {oABESystemBlob.mkguid}')
+        exit(0)
     if not oArgs.masterkey and not oArgs.masterkeylist and not oArgs.mkfile: 
         if(len(lstGUIDs) > 1):
             lstGUIDs.sort()
             print('[!] Required for full decryption are {} different Masterkeys, their GUIDs:'.format(str(len(lstGUIDs))) )
-            for sGUID in lstGUIDs: print('    ' + sGUID)
+            for sGUID in lstGUIDs: print(f'    {sGUID}')
         print('[!] Go and find these files and accompanying decryption details')
         exit(0)
     
@@ -304,7 +312,7 @@ if __name__ == '__main__':
                     if not oMK.get_key() in lstMasterkeys: lstMasterkeys.append(oMK.get_key())
                     if bMKGUID.decode(errors='ignore') == oStateBlob.mkguid: 
                         bMasterkey = oMK.get_key()
-                        print('[+] Success, user masterkey decrypted: ' + bMasterkey.hex())
+                        print(f'[+] Success, user masterkey decrypted: {bMasterkey.hex()}')
 
     ## Option 3 for getting BME Key: User SID + password (hash)
     if oArgs.mkfile and oArgs.sid and (oArgs.password or oArgs.pwdhash): 
@@ -317,10 +325,10 @@ if __name__ == '__main__':
                 if not oMK.get_key() in lstMasterkeys: lstMasterkeys.append(oMK.get_key())
                 if oABEUserBlob and bMKGUID.decode(errors='ignore') == oABEUserBlob.mkguid:
                     bABEMasterkey = oMK.get_key()
-                    print('[+] Success, ABE masterkey decrypted: {}'.format(bABEMasterkey.hex()))
+                    print(f'[+] Success, ABE masterkey decrypted: {bABEMasterkey.hex()}')
                 if bMKGUID.decode(errors='ignore') == oStateBlob.mkguid: 
                     bMasterkey = oMK.get_key()
-                    print('[+] Success, Browser masterkey decrypted: {}'.format(bMasterkey.hex()))
+                    print(f'[+] Success, Browser masterkey decrypted: {bMasterkey.hex()}')
     if not bBrowserABEKey:
         bBrowserABEKey = tryDPAPIDecrypt(oABEUserBlob, bABEMasterkey)
         if bABEMasterkey not in lstMasterkeys:
@@ -335,17 +343,17 @@ if __name__ == '__main__':
             bIv = bBrowserABEKey[-60:-48]
             bCiphertext = bBrowserABEKey[-48:-16]
             bTag = bBrowserABEKey[-16:]
-            if bFlag == b"\x01":
-                if oArgs.verbose: print(f"[!] Using AES-GCM with static key: {aes_key.hex()}")
+            if bFlag == b'\x01':
+                if oArgs.verbose: print(f'[!] Using AES-GCM with static key: {aes_key.hex()}')
                 cipher = AES.new(aes_key, AES.MODE_GCM, nonce=bIv)
-            elif bFlag == b"\x02":
-                if oArgs.verbose: print(f"[!] Using ChaCha20-Poly1305 with static key: {chacha20_key.hex()}")
+            elif bFlag == b'\x02':
+                if oArgs.verbose: print(f'[!] Using ChaCha20-Poly1305 with static key: {chacha20_key.hex()}')
                 cipher = ChaCha20_Poly1305.new(key=chacha20_key, nonce=bIv)
             else:
-                raise ValueError("Unknown flag '{}'".format(bFlag))
+                raise ValueError(f'Unknown flag \'{bFlag}\'')
             try:
                 bBrowserABEKey = cipher.decrypt_and_verify(bCiphertext, bTag)
-                print("[+] Success, decrypted ABE key: {}".format(bBrowserABEKey.hex()))
+                print(f'[+] Success, decrypted ABE key: {bBrowserABEKey.hex()}')
             except ValueError:
                 pass
         else:
