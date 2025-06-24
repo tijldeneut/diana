@@ -38,11 +38,11 @@ if __name__ == '__main__':
         'usage: %prog [options] CREDHIST\n\n'
         'It tries to decrypt a user CREDHIST file.\n'
         'AppData\\Roaming\\Microsoft\\Protect\\CREDHIST\n'
-        'Needs either the current user SHA1 hash or cleartext password.')
+        'Needs either the current user SHA1 UTF16LE hash or cleartext password.')
 
     parser = optparse.OptionParser(usage=usage)
-    parser.add_option('--password', metavar='PASSWORD', dest='password')
-    parser.add_option('--pwdhash', metavar='HASH', dest='pwdhash')
+    parser.add_option('--password', '-p', metavar='PASSWORD', dest='password')
+    parser.add_option('--pwdhash', '-a', metavar='HASH', dest='pwdhash')
 
     (options, args) = parser.parse_args()
 
@@ -53,5 +53,6 @@ if __name__ == '__main__':
     if options.pwdhash:  cred.decryptWithHash(bytes.fromhex(options.pwdhash))
     elif options.password: cred.decryptWithPassword(options.password)
     for s in cred.entries_list:
-        if s.ntlm: print('[+] CREDHIST decrypted')
+        if s.ntlm: 
+            print('[+] CREDHIST decrypted')
     print(cred)
