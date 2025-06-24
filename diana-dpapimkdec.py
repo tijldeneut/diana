@@ -25,7 +25,7 @@ except ImportError: raise ImportError('Missing dpapick3, please install via pip 
 
 def checkParameters(options, args):
     """Simple checks on the parameters set by the user."""
-    if not args: sys.exit('You must provide at least one masterkey.')
+    if not args or not len(args) == 1: sys.exit('You must provide at least one masterkey.')
 
     boolEmpty = True
     for x in options.__dict__: 
@@ -53,6 +53,7 @@ def checkParameters(options, args):
 def createHash(oMK, sSID):
     ## John & Hashcat format: $DPAPImk$<version>*<context>*<SID>*<cipheralgo>*<hashalgo>*<rounds>*<iv>*<length-ciphertext>*<ciphertext>
     ##>> context is local (1) or domain MK (2) or new-domain MK (3)
+    ##>> version is older v1 (1) or more recent v2 (2)
     sHash = ''
     sContext = '1'
     sCipherAlgo = oMK.masterkey.cipherAlgo.name.lower().replace('-','')
@@ -61,10 +62,16 @@ def createHash(oMK, sSID):
     sIV = oMK.masterkey.iv.hex()
     sLengthCipher = len(oMK.masterkey.ciphertext.hex())
     sCipher = oMK.masterkey.ciphertext.hex()
-    sHash = '$DPAPImk$2*{}*{}*{}*{}*{}*{}*{}*{}'.format(sContext, sSID, sCipherAlgo, sHashAlgo, sRounds, sIV, sLengthCipher, sCipher)
-    ## Assuming v2, Hashcat mode 15900
-    open('{}.hc15900'.format(oMK.guid.decode()),'a').write(sHash)
-    print('[+] Exported hash to {}.hc15900'.format(oMK.guid.decode()))
+    sHash1 = '$DPAPImk$1*1*{}*{}*{}*{}*{}*{}*{}'.format(sSID, sCipherAlgo, sHashAlgo, sRounds, sIV, sLengthCipher, sCipher)
+    sHash2 = '$DPAPImk$1*3*{}*{}*{}*{}*{}*{}*{}'.format(sSID, sCipherAlgo, sHashAlgo, sRounds, sIV, sLengthCipher, sCipher)
+    sHash3 = '$DPAPImk$2*2*{}*{}*{}*{}*{}*{}*{}'.format(sSID, sCipherAlgo, sHashAlgo, sRounds, sIV, sLengthCipher, sCipher)
+    sHash4 = '$DPAPImk$2*3*{}*{}*{}*{}*{}*{}*{}'.format(sSID, sCipherAlgo, sHashAlgo, sRounds, sIV, sLengthCipher, sCipher)
+    ## Create 4 files, all different Hashcat modes 15900
+    open('{}.hc15300'.format(oMK.guid.decode()),'a').write(sHash1)
+    open('{}.hc15310'.format(oMK.guid.decode()),'a').write(sHash2)
+    open('{}.hc15900'.format(oMK.guid.decode()),'a').write(sHash3)
+    open('{}.hc15910'.format(oMK.guid.decode()),'a').write(sHash4)
+    print('[+] Exported hash to 4 files {}.hc15xx0'.format(oMK.guid.decode()))
     return sHash
 
 def parseGUID(bData):
@@ -78,15 +85,17 @@ def parseGUID(bData):
 if __name__ == '__main__':
     """Utility core."""
     usage = (
-        'usage: %prog [options] MKfile1 MKfile2 etc.\n\n'
-        'This script tries to unlock (decrypt) MasterKey files provided.\n'
-        ' Default User MK location: %appdata%\\Microsoft\\Protect\n'
-        ' Default System MK locations: Windows\\System32\\Microsoft\\Protect\\S-1-5-18\\{User}')
+        r'usage: %prog [options] MKfile1 MKfile2 etc.\n\n'
+        r'This script tries to unlock (decrypt) MasterKey files provided.\n'
+        r' Default User MK location: %appdata%\\Microsoft\\Protect\n'
+        r' Default System MK locations: Windows\\System32\\Microsoft\\Protect\\S-1-5-18\\{User}')
 
     parser = optparse.OptionParser(usage=usage)
+    #parser.add_option('--system', metavar='HIVE', help=r'SYSTEM file; default: Windows\System32\config\SYSTEM', default=os.path.join('Windows','System32','config','SYSTEM'))
+    #parser.add_option('--security', metavar='HIVE', help=r'SECURITY file; default: Windows\System32\config\SECURITY', default=os.path.join('Windows','System32','config','SECURITY'))
     parser.add_option('--system', metavar='HIVE', help=r'SYSTEM file; example: Windows\System32\config\SYSTEM')
     parser.add_option('--security', metavar='HIVE', help=r'SECURITY file; example: Windows\System32\config\SECURITY')
-    parser.add_option('--sid', metavar='SID', dest='sid', help='User SID in case of user blobs, will try extract from folder')
+    parser.add_option('--sid', metavar='SID', dest='sid', help='User SID in case of user masterkeys, will try extract from path')
     parser.add_option('--credhist', metavar='FILE', dest='credhist', help='User CREDHIST file')
     parser.add_option('--password', metavar='PASSWORD', dest='password', help='User password in case of user blobs')
     parser.add_option('--pwdhash', metavar='HASH', dest='pwdhash', help='Example for empty SHA1 hash: da39a3ee5e6b4b0d3255bfef95601890afd80709')
@@ -109,7 +118,7 @@ if __name__ == '__main__':
         else:
             for sFile in os.listdir(sArg):
                 sFilepath = os.path.join(sArg, sFile)
-                if not os.path.isfile(sFilepath): continue
+                if not os.path.isfile(sFilepath): break
                 if sFile == 'Preferred': print('[+] Preferred Key is ' + parseGUID(open(sFilepath,'rb').read())[:36])
                 else:
                     if not '-' in sFile: continue
@@ -121,6 +130,7 @@ if __name__ == '__main__':
             for oMK in oMKL: 
                 print(oMK)
                 if options.export: createHash(oMK, options.sid)
+        if options.export: print('[i] Note: created 4 format files per hash, \n     if hashes are for local users try modes 15300 or 15900,\n     for domain users, try modes 15310 or 15910')
         exit()
     
     if options.security and options.system:
