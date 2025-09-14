@@ -296,6 +296,8 @@ def deriveABEKey(dctABEData):
         oCipher = ChaCha20_Poly1305.new(key=bytes.fromhex('E98F37D7F4E1FA433D19304DC2258042090E2D1D7EEA7670D41F738D08729660'), nonce=dctABEData['iv'])
     elif dctABEData['version'] == 3:
         bXORKey = bytes.fromhex('CCF8A1CEC56605B8517552BA1A2D061C03A29E90274FB2FCF59BA4B75C392390')
+        print('[-] Error: found ABE encryption version 3, not yet implemented. I need some coffee :-)')
+        return None
         ## TODO: Decrypt the Encrypted AES Key here, todo via CNG
         #bAESKey = xor-decrypted-aes-with-bXORKey
         #oCipher = AES.new(bAESKey, AES.MODE_GCM, nonce=dctABEData['iv'])
@@ -421,7 +423,7 @@ if __name__ == '__main__':
     if bABEData:
         dctABEData = parseABEBlob(bABEData)
         bBrowserABEKey = deriveABEKey(dctABEData)
-        print(f'\n[+] Got ABE Encryption Key: {bBrowserABEKey.hex()}')
+        if bBrowserABEKey: print(f'\n[+] Got ABE Encryption Key: {bBrowserABEKey.hex()}')
     if not bBrowserBMEKey: 
         bBrowserBMEKey = tryDPAPIDecrypt(oStateBlob, bMasterkey)
         #if bMasterkey not in lstMasterkeys: lstMasterkeys.append(bMasterkey)
