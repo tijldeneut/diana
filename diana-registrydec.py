@@ -449,26 +449,34 @@ def getLocalHashes(sSYSTEMhive, sSAMhive, lstUsers, boolVerbose = True):
         bDesKey1, bDesKey2 = getDESKeys(bytes.fromhex(sUserSID))
         bRegVHash = lstUser[2]
         sUsername = bRegVHash[0xCC+bRegVHash[0xc]:0xCC+bRegVHash[0xc]+bRegVHash[0x10]].decode('UTF-16LE')
-        bOffset = bRegVHash[0xa8:0xa8+4]
-        sOffset = ''.join(map(str.__add__, bOffset.hex()[-2::-2], bOffset.hex()[-1::-2])) ## Convert endianness
-        iOffset = 0xCC + int(sOffset, 16)
-        bLength = bRegVHash[0xac:0xac+4]
-        sLength = ''.join(map(str.__add__, bLength.hex()[-2::-2], bLength.hex()[-1::-2]))
-        iLength = int(sLength, 16)  ## Length 0x38 == AES, Length 0x14 == RC4, anything else is "no password"
-        ## Decrypt double encrypted hash (AES or RC4)
-        if iLength == 0x38: ## AES encryption
-            bDoubleEncHash = bRegVHash[24+iOffset:24+iOffset+16]
-            bIV = bRegVHash[8+iOffset:8+iOffset+16]
-            bEncHash = AES.new(bSysKey, AES.MODE_CBC, bIV).decrypt(bDoubleEncHash)
-        elif iLength == 0x14: ## RC4 encryption
-            bDoubleEncHash = bRegVHash[4+iOffset:4+iOffset+16]
-            bHashRC4Key = md5(bSysKey+bytes.fromhex(sUserSID)+b'NTPASSWORD\x00').digest()
-            bEncHash = ARC4.new(bHashRC4Key).decrypt(bDoubleEncHash)
-        else: bEncHash = b'' ## User has no password
-        ## Decrypt encrypted hash (in all cases DES encryption)
-        if not bEncHash: sHash = '31d6cfe0d16ae931b73c59d7e0c089c0'
-        else: sHash = DES.new(bDesKey1, DES.MODE_ECB).decrypt(bEncHash[:8]).hex() + DES.new(bDesKey2, DES.MODE_ECB).decrypt(bEncHash[8:]).hex()
-        print(f'     {lstUser[1]} : aad3b435b51404eeaad3b435b51404ee:{sHash}')
+        sEmptyLM = "aad3b435b51404eeaad3b435b51404ee"
+        sEmptyNTLM = '31d6cfe0d16ae931b73c59d7e0c089c0'
+        dResultHashes = {}
+        for sHashName, iHashOffsetMult in {"LM": 13, "NTLM": 14, "LM_hist": 15, "NTLM_hist": 16}.items():
+            iHashOffset = iHashOffsetMult*0x0c
+            bOffset = bRegVHash[iHashOffset:iHashOffset+4]
+            sOffset = ''.join(map(str.__add__, bOffset.hex()[-2::-2], bOffset.hex()[-1::-2])) ## Convert endianness
+            iOffset = 0xCC + int(sOffset, 16)
+            bLength = bRegVHash[iHashOffset+4:iHashOffset+8]
+            sLength = ''.join(map(str.__add__, bLength.hex()[-2::-2], bLength.hex()[-1::-2]))
+            iLength = int(sLength, 16)  ## Length 0x38 == AES, Length 0x14 == RC4, anything else is "no password"
+            ## Decrypt double encrypted hash (AES or RC4)
+            if iLength == 0x38: ## AES encryption
+                bDoubleEncHash = bRegVHash[24+iOffset:24+iOffset+16]
+                bIV = bRegVHash[8+iOffset:8+iOffset+16]
+                bEncHash = AES.new(bSysKey, AES.MODE_CBC, bIV).decrypt(bDoubleEncHash)
+            elif iLength == 0x14: ## RC4 encryption
+                bDoubleEncHash = bRegVHash[4+iOffset:4+iOffset+16]
+                bHashRC4Key = md5(bSysKey+bytes.fromhex(sUserSID)+b'NTPASSWORD\x00').digest()
+                bEncHash = ARC4.new(bHashRC4Key).decrypt(bDoubleEncHash)
+            else: bEncHash = b'' ## User has no password
+            ## Decrypt encrypted hash (in all cases DES encryption)
+            if not bEncHash: sHash = sEmptyNTLM if "NT" in sHashName else sEmptyLM
+            else: sHash = DES.new(bDesKey1, DES.MODE_ECB).decrypt(bEncHash[:8]).hex() + DES.new(bDesKey2, DES.MODE_ECB).decrypt(bEncHash[8:]).hex()
+            dResultHashes[sHashName] = sHash
+        print(f'    {lstUser[1]} : {dResultHashes["LM"]}:{dResultHashes["NTLM"]}')
+        if dResultHashes["LM_hist"] != sEmptyLM or dResultHashes["NTLM_hist"] != sEmptyNTLM:
+            print(f'    historical : {dResultHashes["LM_hist"]}:{dResultHashes["NTLM_hist"]}')
     return
 
 if __name__ == '__main__':
