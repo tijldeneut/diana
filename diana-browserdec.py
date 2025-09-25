@@ -274,6 +274,8 @@ def parseABEBlob(bABEData):
     iContentLen = struct.unpack('<I', bABEData[4+iHeaderLen:4+iHeaderLen+4])[0]
     bContent = bABEData[8+iHeaderLen:8+iHeaderLen+iContentLen]
 
+    if iContentLen==32: return {'data':bContent} ## No versioning here (some versions of Edge do this)
+
     dctABEData['version'] = int(bContent[0])
     bContent = bContent[1:]
     if dctABEData['version'] <= 2: ## Versions 1 and 2
@@ -422,7 +424,8 @@ if __name__ == '__main__':
         #if bABEMasterkey not in lstMasterkeys: lstMasterkeys.append(bABEMasterkey)
     if bABEData:
         dctABEData = parseABEBlob(bABEData)
-        bBrowserABEKey = deriveABEKey(dctABEData)
+        if 'version' in dctABEData: bBrowserABEKey = deriveABEKey(dctABEData)
+        else: bBrowserABEKey = dctABEData['data'] ## This might a simplification, but it seems to work
         if bBrowserABEKey: print(f'\n[+] Got ABE Encryption Key: {bBrowserABEKey.hex()}')
     if not bBrowserBMEKey: 
         bBrowserBMEKey = tryDPAPIDecrypt(oStateBlob, bMasterkey)
