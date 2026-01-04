@@ -2,15 +2,16 @@
 # vim:ts=4:expandtab:sw=4
 # -*- coding: utf-8 -*-
 #
-# Copyright 2022, Tijl "Photubias" Deneut <@tijldeneut>
+# Copyright 2025, Tijl "Photubias" Deneut <@tijldeneut>
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-## Source for Domain Cache Dump: https://github.com/CiscoCXSecurity/creddump7
+# You may obtain a copy of the License at 
 #
 # http://www.apache.org/licenses/LICENSE-2.0
+#
+## Source (Domain Cache Dump):   https://github.com/CiscoCXSecurity/creddump7
+## Source (Product Key Decoder): https://github.com/mrpeardotnet/WinProdKeyFinder
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +19,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+## TODO: dpapi_machinekey & dpapi_userkey
+##        Scheduled Task Credentials (seems to not be stored decryptable?)
+'''
+##        There might be an LSA secret called RasCredentials!{SID}#0, which contains dial-up connection passwords when enabled (source: https://www.exploit-db.com/exploits/19196)
+##        There might be an LSA secret called RasDialParams!{SID}#0, which contains dial-up connection passwords when NOT enabled (source: https://www.exploit-db.com/exploits/19196)
+##             --> This {SID} can also just be "S-1-5-18" when it's system enabled
+'''
 '''
 Decrypting and parsing some interesting and General Windows Information.
 Offline and based on certain files and/or registry dumps
@@ -41,7 +49,7 @@ dictAllGroups = {**dictNormalGroups, **dictDomainGroups, **dictBuiltinGroups}
 
 def checkParameters(options, args):
     if options.live:
-        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(r'REG.EXE SAVE HKLM\{} {} /Y >nul 2>&1'.format(x, x))
+        for x in ['SYSTEM', 'SECURITY', 'SOFTWARE', 'SAM']: os.system(r'REG.EXE SAVE HKLM\{} {} /Y >nul 2>&1'.format(x,x))
         sSOFTWAREhive = 'SOFTWARE'
         sSECURITYhive = 'SECURITY'
         sSYSTEMhive = 'SYSTEM'
@@ -58,7 +66,7 @@ def checkParameters(options, args):
         sSAMhive = os.path.join('Windows','System32','config','SAM')
 
     for x in [sSOFTWAREhive, sSECURITYhive, sSYSTEMhive, sSAMhive]: 
-        if not os.path.exists(x): exit('Error finding file "{}"'.format(x))
+        if not os.path.exists(x): exit(f'Error finding file "{x}"')
 
     return (sSOFTWAREhive, sSECURITYhive, sSYSTEMhive, sSAMhive)
 
@@ -84,10 +92,8 @@ def getBootKey(sSYSTEMhive):
     return bytes.fromhex(sBootKey)
 
 def getNLKM(sSYSTEMhive, sSECURITYhive, boolVerbose = True): ## Can be used to determine install date
-    try:
-        bNLKM = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
-    except TypeError:
-        return
+    try: bNLKM = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    except TypeError: return
     sInstallDateTime = datetime.datetime.fromtimestamp(int(getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['OupdTime']))
     if boolVerbose: print('[+] System installed : {}'.format(sInstallDateTime))
     ## This is commented out untill I know of an external use for this beyond decrypting domain hashes
@@ -130,10 +136,8 @@ def getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True):
         iOffsetDomainName = iOffsetDomain+iLengthDomain + (iOffsetDomain+iLengthDomain)%4
         sDomainName = bClearData[iOffsetDomainName:iOffsetDomainName+iLengthDomainName].decode('UTF-16LE')
         return (sClearHash, sUsername, sDomain, sDomainName)
-    try:
-        bNLKMKey = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
-    except TypeError:
-        return []
+    try: bNLKMKey = getLsaSecretVal('NL$KM', sSYSTEMhive, sSECURITYhive)['CurrVal']
+    except TypeError: return []
     oReg = Registry(sSECURITYhive)
     oKey = oReg.open(r'Cache')
     lstDomHashes = []
@@ -187,8 +191,11 @@ def doTBALDecrypt(sSECURITYhive, sSYSTEMhive, boolVerbose = False):
             else:
                 print('    {}'.format(lstSecret))
                 print('    {}'.format(lstSecrets[lstSecret]['CurrVal'].hex()))
+    ## TODO: lstSecret can be "M$_MSV1_0_TBAL_PRIMARY_{22BE8E5B-58B3-4A87-BA71-41B0ECF3A9EA}" which is a local account and holds SHA1 & NT password hash (example: 0300ffff9a00000005000000000000003dbde697d71690a769204beb12283678000000000000000000000000000000000d5399508427ce79556cda71918020c1e8d15b53000000000000000000000000000000000000000070000000020020009000000008000a009a000000000000002e000000000000004e746c6d4372656449736f496e50726f633a3a4973474d5355007300650072000000)
+    ##        or it can be "M$_CLOUDAP_TBAL_{8283D8D4-55B6-466F-B7D7-17A1352D9CAB}_<UID>" (Win10 <b1607) where <UID> is the SHA256 hash of the User ID and holds 96 byte DPAPI key
+    ##        or it can be "M$_CLOUDAP_TBAL_{4416F0BD-3A59-4590-9579-DA6E08AF19B3}_<UID>" (Win10 >=b1703) where <UID> is the SHA256 hash of the User ID and holds 96 byte DPAPI key
     return
-   
+
 def getAutoLoginCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, boolVerbose = True):
     oReg = Registry(sSOFTWAREhive)
     oKey = oReg.open(r'Microsoft\Windows NT\CurrentVersion\Winlogon')
@@ -216,7 +223,7 @@ def getAutoLoginCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, boolVerbose = T
     else: print('[-] No credentials found')
     return
 
-def getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, sRegService = True, boolVerbose = True):
+def getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, sRegService = True, boolVerbose = False):
     def getServiceDetails(sSystem, sName):
         oSysReg = Registry(sSystem)
         sBinary = oSysReg.open(rf'ControlSet001\Services\{sName}').value('ImagePath').value()
@@ -263,9 +270,9 @@ def getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, sRegService = Tru
     return
 
 def getHostname(sSYSTEM, boolVerbose = False):
-    oSoftReg = Registry(sSYSTEM)
+    oSysReg = Registry(sSYSTEM)
     ## Alternative: sHostname = oSoftReg.open(r'Microsoft\Windows\CurrentVersion\Group Policy\DataStore\Machine\0').value('szTargetName').value()
-    sHostname = oSoftReg.open(r'ControlSet001\Control\ComputerName\ComputerName').value('ComputerName').value()
+    sHostname = oSysReg.open(r'ControlSet001\Control\ComputerName\ComputerName').value('ComputerName').value()
     if boolVerbose: print(f'[+] Hostname         : {sHostname}')
     return sHostname
 
@@ -285,7 +292,7 @@ def getSystemDetails(sSOFTWAREhive, boolVerbose = False):
         print(f'[+] OS Details       : {sProductName}; v{sOSVersion}; {sBuildName} (Build {sBuildNr})')
         print(f'                       Owner: {sOwner}')
     return
-   
+
 def getLocalUsers(sSOFTWARE, sSAM, boolMembership = True, boolVerbose = False):
     if boolVerbose: print('[+] Listing Local users')
     def getLocalGroupMembership(sSOFTWARE, sSID, sDomainSID, boolVerbose = False):
@@ -303,29 +310,42 @@ def getLocalUsers(sSOFTWARE, sSAM, boolMembership = True, boolVerbose = False):
             if boolVerbose: print(f'      Member of: {sGroup}')
         return lstGroups
     oSamReg = Registry(sSAM)
-    oKey = oSamReg.open(r'SAM\Domains\Builtin\Aliases\Members')
-    sSystemSID = None
-    lstUsernames = {}
-    for oSubKey in oSamReg.open(r'SAM\Domains\Account\Users\Names').subkeys(): lstUsernames[str(oSubKey.value('(default)').value_type())] = oSubKey.name()
+    sSystemSID = ''
     lstUsers = []
-    for oSubKey in oKey.subkeys(): 
-        if oSubKey.name().startswith('S-1-5-21'):
-            sSystemSID = oSubKey.name() 
-            for oSubKey2 in oSubKey.subkeys():
-                sUserID = str(int(oSubKey2.name(), 16))
-                sSID = sSystemSID + '-' + sUserID
-                if sUserID in lstUsernames: 
-                    sUsername = lstUsernames[sUserID]
-                    sDomainSID = sSID.split('-')[4] + '-' + sSID.split('-')[5] + '-' + sSID.split('-')[6]
-                    sHexUserID = hex(int(sUserID))[2:].zfill(8)
-                    bEncrHash = oSamReg.open(rf'SAM\Domains\Account\Users\{sHexUserID}').value('V').value()
-                    if boolVerbose: print('    {0:25}  SID: {1:50}'.format(sUsername, sSID))
-                    if boolMembership and int(sUserID) >= 1000:
-                        lstGroups = getLocalGroupMembership(sSOFTWARE, sSID, sDomainSID, boolVerbose)
-                        lstUsers.append((sSID, sUsername, bEncrHash, lstGroups))
-                    else:
-                        lstUsers.append((sSID, sUsername, bEncrHash))
+    for oSubKey in oSamReg.open(r'SAM\Domains\Builtin\Aliases\Members').subkeys(): 
+        if oSubKey.name().startswith('S-1-5-21'): 
+            sSystemSID = oSubKey.name()
+            break
+    sDomainSID = '-'.join((sSystemSID.split('-')[4], sSystemSID.split('-')[5], sSystemSID.split('-')[6]))
+    for oSubKey in oSamReg.open(r'SAM\Domains\Account\Users\Names').subkeys(): 
+        iRID = int(oSubKey.value('(default)').value_type())
+        sSID = f'{sSystemSID}-{iRID}'
+        sUsername = oSubKey.name()
+        sHexUserID = hex(iRID)[2:].zfill(8).upper()
+        bEncrHash = oSamReg.open(rf'SAM\Domains\Account\Users\{sHexUserID}').value('V').value()
+        if boolVerbose: print('    {0:25}  SID: {1:50}'.format(sUsername, sSID))
+        if boolMembership and iRID <= 1000:
+            lstGroups = getLocalGroupMembership(sSOFTWARE, sSID, sDomainSID, boolVerbose)
+            lstUsers.append((sSID, sUsername, bEncrHash, lstGroups))
+        else:
+            lstUsers.append((sSID, sUsername, bEncrHash))
     return lstUsers
+
+def getRASCreds(sSYSTEMhive, sSECURITYhive, boolVerbose = False):
+    oDpaReg = dpareg.Regedit()
+    lstSecrets = oDpaReg.get_lsa_secrets(sSECURITYhive, sSYSTEMhive)
+    lstRASObjects = []
+    for lstSecret in lstSecrets:
+        if 'Ras' in lstSecret:
+            try: lstRASVals = lstSecrets[lstSecret]['CurrVal'].decode('UTF-16LE').split('\x00')
+            except: continue
+            if len(lstRASVals) == 11: 
+                lstRASObjects.append(lstRASVals)
+                if boolVerbose: 
+                    print('[+]  Found some RAS Dial-Up data ( {} )'.format(lstSecret))
+                    print('     {}'.format(lstRASVals))
+    ## TODO, found examples to perfect the parsing, currently: lstRASVals seems to be UNK1, UNK2, UNK3 (probably type), UNK4 (probably domain name), UNK5, Account Name, DialUp Password, UNK6, UNK7, UNK8
+    return lstRASObjects
 
 def getMSAccounts(sSOFTWAREhive, boolVerbose = True):
     lstMSLiveAccounts = []
@@ -344,7 +364,7 @@ def getMSAccounts(sSOFTWAREhive, boolVerbose = True):
     if len(lstMSLiveAccounts) > 0 and boolVerbose:
         print('[+] Live Account(s) found, use the Name below to get the DPAPI data from\n    Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\Windows\\CloudAPCache\\MicrosoftAccount\\<ID>\\Cache')
     if boolVerbose:
-        for user in lstMSLiveAccounts: print(f'    User     : {user[1]} with account {user[2]} has ID {user[0]}')
+        for user in lstMSLiveAccounts: print(f'    User     : Account {user[2]} ({user[1]}, {user[0]})')
     return lstMSLiveAccounts
 
 def getAADAccounts(sSOFTWAREhive, boolVerbose = True):
@@ -366,6 +386,57 @@ def getAADAccounts(sSOFTWAREhive, boolVerbose = True):
         for user in lstAADAccounts: print(f'    User     : {user[1]} with account {user[2]} has ID {user[0]}')
     if len(lstAADAccounts) == 0 and boolVerbose: print('[-] None were found')
     return lstAADAccounts
+
+def getProductKeys(sSOFTWAREhive, boolVerbose = True):
+    ## TODO: Get exact Windows version using a conversion of "PID Checker"
+    ## Search for extra locations by running this on a live system: reg query HKLM /s /v "DigitalProductId"
+    lstLocations = [
+        r'Microsoft\Windows NT\CurrentVersion',
+        r'Microsoft\Windows NT\CurrentVersion\DefaultProductKey',
+        r'Microsoft\Windows NT\CurrentVersion\DefaultProductKey2',
+        r'WOW6432Node\Cisco\Cisco AnyConnect Secure Mobility Client\DeviceDetails',
+        r'Microsoft\Internet Explorer\Registration']
+
+    def decodeProductKey(bSource):
+        sKeymap = 'BCDFGHJKMPQRTVWXY2346789'
+        bNewValue = (bSource[66] // 6) & 1 # Remove most significant byte from byte 66 div 6 (ignore remainder)
+        bSource = bSource[:66] + bytes.fromhex(str(((bSource[66] & 0xF7) | ((bNewValue & 2) * 4))).zfill(2)) + bSource[67:] # Clearing 4th bit based on the bNewValue
+        lstSource = []
+        for i in range(52,67): lstSource.append(bSource[i]) ## Converting to array of integers, we only need 14 bytes at offset 52
+
+        sKey = ''
+        for i in range(24,-1,-1):
+            iOffset = 0
+            for j in range(14,-1,-1):
+                iOffset = (iOffset * 256)
+                iOffset = iOffset + lstSource[j]
+                lstSource[j] = iOffset // 24
+                iOffset %= 24
+            sKey = sKeymap[iOffset] + sKey
+
+        if bNewValue == 1: ## If this is new type of ProductKey, we need to add 'N' after 1+offset characters of the key
+            sKey = sKey[:1+iOffset]+'N'+sKey[1+iOffset:]
+            sKey = sKey[1:] ## And remove the first character (to get to 25 chars)
+            if len(sKey) == 24: sKey = 'N' + sKey ## if we only have 24 chars, add 'N' to the beginning
+
+        return sKey[:5] + "-" + sKey[5:10] + "-" + sKey[10:15] + "-" + sKey[15:20] + "-" + sKey[20:]
+    
+    def getKeyData(sLocation, lstProdKeys):
+        oKey = oReg.open(sLocation)
+        sProdKey = (decodeProductKey(oKey.value('DigitalProductId').value()), sLocation)
+        if 'BBBBB-BBBBB-BBBBB-BBBBB-BBBBB' in sProdKey: return lstProdKeys
+        if not any(sProdKey[0] in x for x in lstProdKeys): lstProdKeys.append(sProdKey)
+        return lstProdKeys
+    lstProdKeys = []
+    oReg = Registry(sSOFTWAREhive)
+    for sLocation in lstLocations:
+        try: lstProdKeys = getKeyData(sLocation, lstProdKeys)
+        except: pass
+    if boolVerbose:
+        for lstProdKey in lstProdKeys: print(r'    Key     : {} found at HKLM\SOFTWARE\{}'.format(lstProdKey[0], lstProdKey[1]))
+    if len(lstProdKeys) == 0 and boolVerbose: print('[-] None were found in the default locations')
+    elif boolVerbose: print(f'    Details : https://softcomputers.org/en/blog/online-pid-checker-microsoft-keys-at-valid-and-legality/')
+    return lstProdKeys
 
 def getSecretQuestions(sSAMhive, boolVerbose = False):
     if boolVerbose: print('[+] Finding Secret Questions')
@@ -447,12 +518,15 @@ def getLocalHashes(sSYSTEMhive, sSAMhive, lstUsers, boolVerbose = True):
         sSID = hex(int(lstUser[0].split('-')[-1]))[2:].zfill(8)
         sUserSID = ''.join(map(str.__add__, sSID[-2::-2], sSID[-1::-2]))  ## sUserSID == f4010000
         bDesKey1, bDesKey2 = getDESKeys(bytes.fromhex(sUserSID))
+        ## Works, but not always (e.g. DefaultAccount does not work)
+        # sUsername = bRegVHash[0xCC+bRegVHash[0xc]:0xCC+bRegVHash[0xc]+bRegVHash[0x10]].decode('UTF-16LE')
+        sUsername = lstUser[1]
         bRegVHash = lstUser[2]
-        sUsername = bRegVHash[0xCC+bRegVHash[0xc]:0xCC+bRegVHash[0xc]+bRegVHash[0x10]].decode('UTF-16LE')
-        sEmptyLM = "aad3b435b51404eeaad3b435b51404ee"
+        sEmptyLM = 'aad3b435b51404eeaad3b435b51404ee'
         sEmptyNTLM = '31d6cfe0d16ae931b73c59d7e0c089c0'
-        dResultHashes = {}
-        for sHashName, iHashOffsetMult in {"LM": 13, "NTLM": 14, "LM_hist": 15, "NTLM_hist": 16}.items():
+        ## Note: method aided by https://github.com/MrMcX/diana
+        dctResultHashes = {}
+        for sHashName, iHashOffsetMult in {'LM': 13, 'NTLM': 14, 'LM_hist': 15, 'NTLM_hist': 16}.items():
             iHashOffset = iHashOffsetMult*0x0c
             bOffset = bRegVHash[iHashOffset:iHashOffset+4]
             sOffset = ''.join(map(str.__add__, bOffset.hex()[-2::-2], bOffset.hex()[-1::-2])) ## Convert endianness
@@ -471,12 +545,12 @@ def getLocalHashes(sSYSTEMhive, sSAMhive, lstUsers, boolVerbose = True):
                 bEncHash = ARC4.new(bHashRC4Key).decrypt(bDoubleEncHash)
             else: bEncHash = b'' ## User has no password
             ## Decrypt encrypted hash (in all cases DES encryption)
-            if not bEncHash: sHash = sEmptyNTLM if "NT" in sHashName else sEmptyLM
-            else: sHash = DES.new(bDesKey1, DES.MODE_ECB).decrypt(bEncHash[:8]).hex() + DES.new(bDesKey2, DES.MODE_ECB).decrypt(bEncHash[8:]).hex()
-            dResultHashes[sHashName] = sHash
-        print(f'    {lstUser[1]} : {dResultHashes["LM"]}:{dResultHashes["NTLM"]}')
-        if dResultHashes["LM_hist"] != sEmptyLM or dResultHashes["NTLM_hist"] != sEmptyNTLM:
-            print(f'    historical : {dResultHashes["LM_hist"]}:{dResultHashes["NTLM_hist"]}')
+            if not bEncHash: sNTHash = sEmptyNTLM if 'NT' in sHashName else sEmptyLM
+            else: sNTHash = DES.new(bDesKey1, DES.MODE_ECB).decrypt(bEncHash[:8]).hex() + DES.new(bDesKey2, DES.MODE_ECB).decrypt(bEncHash[8:]).hex()
+            dctResultHashes[sHashName] = sNTHash
+        print(f'     {sUsername} : {dctResultHashes["LM"]}:{dctResultHashes["NTLM"]}')
+        if dctResultHashes['LM_hist'] != sEmptyLM or dctResultHashes['NTLM_hist'] != sEmptyNTLM:
+            print(f'      PREVIOUS HASH : {dctResultHashes["LM_hist"]}:{dctResultHashes["NTLM_hist"]}')
     return
 
 if __name__ == '__main__':
@@ -499,7 +573,8 @@ if __name__ == '__main__':
     print('---- [00] General Information ----')
     getHostname(sSYSTEMhive, True)
     getSystemDetails(sSOFTWAREhive, True)
-    getNLKM(sSYSTEMhive, sSECURITYhive, True)
+    try: getNLKM(sSYSTEMhive, sSECURITYhive, True) ## Added try-catch for Windows7
+    except: pass
     getMachineAccHash(sSYSTEMhive, sSECURITYhive, True)
     lstUsers = getLocalUsers(sSOFTWAREhive, sSAMhive, options.membership, True)
     getSecretQuestions(sSAMhive, True)
@@ -509,7 +584,8 @@ if __name__ == '__main__':
     getLocalHashes(sSYSTEMhive, sSAMhive, lstUsers)
 
     print('\n---- [02] Dump Domain Cached Hashes (if any) ----')
-    getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True)
+    try: getDomainHashes(sSYSTEMhive, sSECURITYhive, boolVerbose = True) ## Added try-catch for Windows7
+    except: pass
 
     print('\n---- [03] List MS Live Accounts (if any) ----')
     getMSAccounts(sSOFTWAREhive)
@@ -521,9 +597,15 @@ if __name__ == '__main__':
     getAutoLoginCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive)
     
     print('\n---- [06] Regular Service Creds (if any) ----')
-    getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, True)
+    getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, True, True)
     
     print('\n---- [07] Component Service Creds (if any) ----')
-    getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, False)
+    getServiceCreds(sSOFTWAREhive, sSYSTEMhive, sSECURITYhive, False, True)
+
+    print('\n---- [08] Some distinct product keys ----')
+    getProductKeys(sSOFTWAREhive, boolVerbose = True)
+
+    #print('\n--- Extra\'s')
+    #getRASCreds(sSYSTEMhive, sSECURITYhive, True)
 
     #if options.live: os.system('DEL SOFTWARE SECURITY SYSTEM SAM')
