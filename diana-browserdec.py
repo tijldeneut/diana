@@ -207,7 +207,7 @@ def decryptLogins(lstLogins, bBrowserBMEKey, bBrowserABEKey=None, lstMasterkeys=
         else: 
             bDecrypted = decryptChromeString(lstLogin[2], bBrowserBMEKey, lstMasterkeys)
             if bDecrypted and len(bDecrypted) >= 16: bDecrypted = bDecrypted[:-16]
-        if bDecrypted: sDecrypted = bDecrypted.decode()
+        if bDecrypted: sDecrypted = bDecrypted.decode(errors='ignore')
         else: sDecrypted = None
         if sDecrypted != None: iDecrypted += 1
 
